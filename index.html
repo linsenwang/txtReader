@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>txtReader</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.13.11/dist/katex.min.css">
+    <link rel="icon" type="image/x-icon" href="web_icon/yanan.png" />
+    <link rel="stylesheet" type="text/css" href="afdian_styles.css">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: auto;
+            padding: 0;
+        }
+
+        .file-list {
+            margin: 20px;
+            padding: 10px;
+        }
+
+        .file-list ul {
+            list-style-type: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        .file-list li {
+            margin: 10px 0;
+            padding: 10px;
+            display: flex;
+            flex-direction: column; /* 垂直排列内容 */
+            align-items: center; /* 确保子内容在容器中居中 */
+            justify-content: center; /* 垂直方向也居中 */
+            border-radius: 6px;
+            text-align: center; /* 让文本水平居中 */
+        }
+
+        .file-list a {
+            text-decoration: none;
+            color: #000; /* 蓝色链接 */
+            font-size: 16px;
+            font-weight: bold;
+            word-wrap: break-word; /* 自动换行 */
+            overflow-wrap: break-word;
+            max-width: 100%; /* 限制宽度，确保适应容器 */
+            margin-bottom: 5px; /* 添加与时间的间距 */
+            display: block; /* 使链接单独占据一行并居中 */
+        }
+
+        .file-list a:hover {
+            /* text-decoration: underline; */
+            text-decoration: none;
+            color: #0056b3; /* 深色悬停效果 */
+        }
+
+        .file-list .mtime {
+            font-size: 12px;
+            color: #555; /* 灰色时间字体 */
+            white-space: nowrap; /* 避免时间内容换行 */
+            display: block; /* 确保时间单独占据一行并居中 */
+        }
+    </style>
+</head>
+<body>
+    <!-- 文件列表 -->
+    <div class="file-list" id="fileList">
+        <!-- 文件列表将插入在这里 -->
+    </div>
+
+    <!-- 引入必要的库 -->
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // 获取文件列表并显示
+            fetch('/list-files')
+                .then(response => response.json())
+                .then(files => {
+                    console.log('接收到的文件列表：', files); // 调试信息
+                    const fileListDiv = document.getElementById('fileList');
+                    let htmlContent = '<ul>';
+                    files.forEach(file => {
+                        const fileName = file.name;
+                        const moFileName = file.name.replace(/_/g, ' ').replace(/--/g, ' ').replace(/.txt/g, ' ').replace(/——/g, ' ');
+                        const mtime = new Date(file.mtime).toLocaleString().replace(/,/g, ' '); // 格式化日期
+                        // 创建包含文件名和修改时间的列表项
+                        htmlContent += `<li><a href="file.html?name=${encodeURIComponent(fileName)}">${moFileName}</a><span class="mtime">${mtime}</span></li>`;
+                    });
+                    htmlContent += '</ul>';
+                    fileListDiv.innerHTML = htmlContent;
+                })
+                .catch(error => {
+                    console.error('获取文件列表出错：', error);
+                });
+        });
+    </script>
+</body>
+</html>

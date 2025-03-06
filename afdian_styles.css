@@ -1,0 +1,177 @@
+body {
+    font-size: 18px;
+    font-family: -apple-system, BlinkMacSystemFont, Helvetica Neue, Arial, PingFang SC, Hiragino Sans GB, Microsoft YaHei, WenQuanYi Micro Hei, sans-serif;
+    line-height: 1.5;
+    max-width: 33em; /* 设置最大宽度 */
+    margin: 13em auto;    /* 上下为0，左右自动居中 */
+    /* padding: 3em 0; */
+}
+
+a {
+    color: #946DE6;
+    font-weight: 500;
+    text-decoration: none;
+}
+
+p {
+    /* white-space: pre-wrap; */
+}
+
+small {
+    font-size: 1em;
+}
+
+span {
+    display: inline-block;
+    margin: auto;
+  }
+
+h2 {
+    font-size: 1em;
+}
+
+h3 {
+    font-size: 1em;
+}
+
+/* ul {
+    padding: 0 1em;
+}
+
+ol {
+    padding: 0 1em;
+} */
+
+ul {
+    padding: 0;
+}
+
+ol {
+    padding: 0;
+}
+
+img {
+    width: 100%;
+    height: 10em;
+    object-fit: contain;
+    margin: 0.5em 0;
+}
+
+code {
+    background-color: #eee;
+    padding: 0.2em;
+    border-radius: 0.2em;
+}
+
+pre {
+    background-color: #eee;
+    overflow-x: scroll; /* 设置水平滚动 */
+    padding: 0.5em;
+    padding-bottom: 1.5em;
+    border-radius: 0.5em;
+    overflow-x: visible; /* 取消水平滚动 */
+    word-wrap: break-word; /* 允许长单词换行 */
+    overflow-wrap: break-word; /* 新的换行属性，兼容性更好 */
+    white-space: normal; /* 允许文本换行 */
+}
+
+figure {
+    margin: 0;
+}
+
+video {
+    display: none;
+}
+
+svg {
+    display: none;
+}
+
+blockquote {
+    margin: 0;
+    padding-left: 0.5em;
+    margin-left: calc(0.5em - 0.15em);
+    border-left: solid 0.15em #ddd;
+}
+
+.LinkCard-image {
+    display: none;
+}
+
+.ztext-empty-paragraph {
+    display: none;
+}
+
+.katex-display {
+    margin: 0;
+}
+
+table {
+border-collapse: collapse;
+text-align: center;
+font-size: 16px;
+}
+
+th {
+font-weight: bold;
+text-align: center;
+background-color: #ffffff;
+padding: 0.3em 2em;
+}
+
+td {
+text-align: center;
+padding: 0.3em 2em;
+}
+
+tr:nth-child(odd) {
+background-color: #f9f9f9;
+}
+
+tr:nth-child(even) {
+background-color: #ffffff;
+}
+
+/* tr:hover {
+background-color: #f1f1f1;
+} */
+
+@media (prefers-color-scheme: dark) {
+    body {
+        /* background-color: #121212; */
+        background-color: #1F2020;
+        /* color: #e0e0e0; */
+        color: #fff;
+    }
+
+    /* p {
+        color: #aaa;
+    } */
+
+    a {
+        color: #bb86fc; /* Softer purple for dark mode */
+    }
+
+    th {
+    background-color: #121212;
+    }
+    
+    tr:nth-child(odd) {
+    background-color: #121212;
+    }
+    
+    tr:nth-child(even) {
+    background-color: #121212;
+    }
+
+    pre {
+        background-color: #252525;
+    }
+}
+
+@media (max-width: 40em) {
+    body {
+      margin: 13em 1.3em;
+    }
+  }
+

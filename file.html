@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>txtReader</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.13.11/katex.min.css">
+    <link rel="icon" type="image/x-icon" href="web_icon/yanan.png" />
+    <link rel="stylesheet" type="text/css" href="afdian_styles.css">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        /* 样式代码 */
+        .back-link {
+            margin-bottom: 20px;
+        }
+        .back-link a {
+            text-decoration: none;
+            color: #007BFF;
+            font-size: 16px;
+        }
+        .back-link a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <!-- 返回链接 -->
+    <div class="back-link">
+        <!-- <a href="index.html">← 返回文件列表</a> -->
+    </div>
+
+    <!-- 渲染后的内容 -->
+    <div class="content" id="content">
+        <!-- 渲染后的内容将会插入在这里 -->
+    </div>
+
+    <!-- 引入必要的库 -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.13.11/katex.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.13.11/contrib/auto-render.min.js"></script>
+
+    <script>
+        document.addEventListener('keydown', (event) => {
+            // 检测是否按下了 Shift + Command + O
+            // if (event.shiftKey && event.metaKey && event.key === 'o') {
+            if (event.shiftKey && event.metaKey && event.code === 'KeyO') {
+                // 跳转到 index.html
+                window.location.href = './index.html';
+            }
+        });
+
+        document.addEventListener('DOMContentLoaded', function() {
+            // 获取 URL 中的文件名参数
+            const urlParams = new URLSearchParams(window.location.search);
+            const fileName = urlParams.get('name');
+
+            if (!fileName) {
+                alert('未提供文件名参数');
+                return;
+            }
+
+            function fixLatexTextSubscripts(content) {
+                // 正则表达式匹配 \text 和后续的两个括号内容
+                const regex = /\\text\{([^{}]+)\}_\{([^{}]+)\}/g;
+
+                // 使用正则替换，保留第一个括号的内容和后面的子脚本部分
+                const fixedContent = content.replace(regex, (match, textContent, subscript) => {
+                    return `${textContent}_${subscript}`;
+                });
+
+                return fixedContent;
+            }
+
+            // 更新页面标题
+            document.title = fileName.replace('.txt', '').trim();
+
+            // 获取文件内容并渲染
+            fetchFileContent(fileName);
+
+            function fetchFileContent(fileName) {
+                console.log('请求文件内容：', fileName); // 调试信息
+                fetch('/file-content?name=' + encodeURIComponent(fileName))
+                    .then(response => {
+                        console.log('响应状态：', response.status); // 调试信息
+                        if (!response.ok) {
+                            throw new Error('网络响应错误，状态码：' + response.status);
+                        }
+                        return response.text();
+                    })
+                    .then(text => {
+                        console.log('文件内容获取成功'); // 调试信息
+
+                        // 对文本进行预处理
+                        text = text
+                            .replace(/\\\(/g, '$')      // 将 `\(` 替换为 `$`
+                            .replace(/\\\)/g, '$')      // 将 `\)` 替换为 `$`
+                            .replace(/\\\[\n*\s*/g, '$$$$') // 将 `\[` 或 `\[\n` 替换为 `$$`
+                            .replace(/\s*\n*\\\]/g, '$$$$') // 将 `\]` 或 `\]\n` 替换为 `$$`
+                            .replace(/\n+/g, '\n\n')    // 将多个换行替换为两个换行
+                            .trim();
+
+                        text = fixLatexTextSubscripts(text);
+
+                        text = text.replace(/\[音乐\]|\[掌声\]|（掌声）|（音乐）|【音乐】|【掌声】/g, '').trim();
+
+                        console.log('开始渲染内容'); // 调试信息
+                        parseMarkdownToHtml(text);
+                    })
+                    .catch(error => {
+                        console.error('获取文件内容出错：', error);
+                        alert('无法获取文件内容，请检查控制台以获取更多信息。');
+                    });
+            }
+
+            // 渲染函数
+            function parseMarkdownToHtml(text) {
+                console.log('正在执行 parseMarkdownToHtml 函数');
+                const contentDiv = document.getElementById('content');
+                contentDiv.innerHTML = ''; // 清空之前的内容
+
+                // 测试 marked 是否可用
+                if (typeof marked === 'undefined') {
+                    console.error('marked 库未定义');
+                    return;
+                }
+
+                const html = marked.parse(text);
+                console.log('生成的 HTML 内容：', html);
+                contentDiv.innerHTML = html;
+
+                // 渲染数学公式
+                if (typeof renderMathInElement === 'undefined') {
+                    console.error('renderMathInElement 函数未定义');
+                    return;
+                }
+                renderMathInElement(contentDiv, {
+                    delimiters: [
+                        { left: "$$", right: "$$", display: true },
+                        { left: "\\[", right: "\\]", display: true },
+                        { left: "$", right: "$", display: false },
+                        { left: "\\(", right: "\\)", display: false }
+                    ]
+                });
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,113 @@
+
+> txtreader@1.0.0 start
+> node server.js
+
+node:events:495
+      throw er; // Unhandled 'error' event
+      ^
+
+Error: listen EADDRINUSE: address already in use :::3000
+    at Server.setupListenHandle [as _listen2] (node:net:1811:16)
+    at listenInCluster (node:net:1859:12)
+    at Server.listen (node:net:1947:7)
+    at Function.listen (/home/yangqian/Dev/txtReader/node_modules/express/lib/application.js:635:24)
+    at Object.<anonymous> (/home/yangqian/Dev/txtReader/server.js:59:5)
+    at Module._compile (node:internal/modules/cjs/loader:1356:14)
+    at Module._extensions..js (node:internal/modules/cjs/loader:1414:10)
+    at Module.load (node:internal/modules/cjs/loader:1197:32)
+    at Module._load (node:internal/modules/cjs/loader:1013:12)
+    at Function.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:128:12)
+Emitted 'error' event on Server instance at:
+    at emitErrorNT (node:net:1838:8)
+    at process.processTicksAndRejections (node:internal/process/task_queues:82:21) {
+  code: 'EADDRINUSE',
+  errno: -98,
+  syscall: 'listen',
+  address: '::',
+  port: 3000
+}
+
+Node.js v18.19.1
+
+> txtreader@1.0.0 start
+> node server.js
+
+node:events:495
+      throw er; // Unhandled 'error' event
+      ^
+
+Error: listen EADDRINUSE: address already in use :::3000
+    at Server.setupListenHandle [as _listen2] (node:net:1811:16)
+    at listenInCluster (node:net:1859:12)
+    at Server.listen (node:net:1947:7)
+    at Function.listen (/home/yangqian/Dev/txtReader/node_modules/express/lib/application.js:635:24)
+    at Object.<anonymous> (/home/yangqian/Dev/txtReader/server.js:59:5)
+    at Module._compile (node:internal/modules/cjs/loader:1356:14)
+    at Module._extensions..js (node:internal/modules/cjs/loader:1414:10)
+    at Module.load (node:internal/modules/cjs/loader:1197:32)
+    at Module._load (node:internal/modules/cjs/loader:1013:12)
+    at Function.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:128:12)
+Emitted 'error' event on Server instance at:
+    at emitErrorNT (node:net:1838:8)
+    at process.processTicksAndRejections (node:internal/process/task_queues:82:21) {
+  code: 'EADDRINUSE',
+  errno: -98,
+  syscall: 'listen',
+  address: '::',
+  port: 3000
+}
+
+Node.js v18.19.1
+
+> txtreader@1.0.0 start
+> node server.js
+
+服务器已启动：http://localhost:3000
+实际文件路径： /home/yangqian/Dev/txtReader/pro/daa-05-1.txt
+
+> txtreader@1.0.0 start
+> node server.js
+
+服务器已启动：http://localhost:3000
+实际文件路径： /home/yangqian/Dev/txtReader/pro/daa-05-1.txt
+实际文件路径： /home/yangqian/Dev/txtReader/pro/daa-05-1.txt
+实际文件路径： /home/yangqian/Dev/txtReader/pro/daa-05-1.txt
+实际文件路径： /home/yangqian/Dev/txtReader/pro/mao_audio_sum_en
+读取文件出错： [Error: EISDIR: illegal operation on a directory, read] {
+  errno: -21,
+  code: 'EISDIR',
+  syscall: 'read'
+}
+实际文件路径： /home/yangqian/Dev/txtReader/pro/daa-01-1.txt
+实际文件路径： /home/yangqian/Dev/txtReader/pro/ce-15-2-ollama.txt
+实际文件路径： /home/yangqian/Dev/txtReader/pro/daa-05-1.txt
+实际文件路径： /home/yangqian/Dev/txtReader/pro/daa-05-1.txt
+实际文件路径： /home/yangqian/Dev/txtReader/pro/Banerjee et al. 2015 - The Miracle of Microfinance.txt
+实际文件路径： /home/yangqian/Dev/txtReader/pro/.DS_Store
+实际文件路径： /home/yangqian/Dev/txtReader/pro/daa-05-2.txt
+实际文件路径： /home/yangqian/Dev/txtReader/pro/pro
+读取文件出错： [Error: EISDIR: illegal operation on a directory, read] {
+  errno: -21,
+  code: 'EISDIR',
+  syscall: 'read'
+}
+实际文件路径： /home/yangqian/Dev/txtReader/pro/How I use LLMs.txt
+实际文件路径： /home/yangqian/Dev/txtReader/pro/How I use LLMs.txt
+实际文件路径： /home/yangqian/Dev/txtReader/pro/How I use LLMs.txt
+实际文件路径： /home/yangqian/Dev/txtReader/pro/How I use LLMs.txt
+实际文件路径： /home/yangqian/Dev/txtReader/pro/make your own things.txt
+实际文件路径： /home/yangqian/Dev/txtReader/pro/How I use LLMs.txt
+实际文件路径： /home/yangqian/Dev/txtReader/pro/How I use LLMs.txt
+实际文件路径： /home/yangqian/Dev/txtReader/pro/How I use LLMs.txt
+实际文件路径： /home/yangqian/Dev/txtReader/pro/How I use LLMs.txt
+实际文件路径： /home/yangqian/Dev/txtReader/pro/How I use LLMs.txt
+实际文件路径： /home/yangqian/Dev/txtReader/pro/How I use LLMs.txt
+实际文件路径： /home/yangqian/Dev/txtReader/pro/How I use LLMs.txt
+实际文件路径： /home/yangqian/Dev/txtReader/pro/How I use LLMs.txt
+实际文件路径： /home/yangqian/Dev/txtReader/pro/How I use LLMs.txt
+实际文件路径： /home/yangqian/Dev/txtReader/pro/make your own things.txt
+实际文件路径： /home/yangqian/Dev/txtReader/pro/make your own things.txt
+实际文件路径： /home/yangqian/Dev/txtReader/pro/Steve Jobs President & CEO, NeXT Computer Corp and Apple. MIT Sloan Distinguished Speaker Series.txt
+实际文件路径： /home/yangqian/Dev/txtReader/pro/Information Session_ Code In Place 2025.txt
+实际文件路径： /home/yangqian/Dev/txtReader/pro/Information Session_ Code In Place 2025.txt
+实际文件路径： /home/yangqian/Dev/txtReader/pro/Information Session_ Code In Place 2025.txt

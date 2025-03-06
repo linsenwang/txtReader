@@ -14,6 +14,12 @@
             padding: 0;
         }
 
+        .folder_icon {
+            height: 1em;
+            width: 1em;
+            margin: -0.15em 0.5em;
+        }
+
         .file-list {
             margin: 20px;
             padding: 10px;
@@ -72,7 +78,12 @@
     <script>
         document.addEventListener('DOMContentLoaded', function() {
             // 获取文件列表并显示
-            fetch('/list-files')
+            const urlParams = new URLSearchParams(window.location.search);
+            const dir = urlParams.get('dir') || ''; // 获取 `dir` 参数，如果不存在则为空字符串
+            // fetch('/list-files')
+            console.log('请求的文件夹：', dir); // 调试信息
+
+            fetch(`/list-files?dir=${encodeURIComponent(dir)}`)
                 .then(response => response.json())
                 .then(files => {
                     console.log('接收到的文件列表：', files); // 调试信息
@@ -83,7 +94,14 @@
                         const moFileName = file.name.replace(/_/g, ' ').replace(/--/g, ' ').replace(/.txt/g, ' ').replace(/——/g, ' ');
                         const mtime = new Date(file.mtime).toLocaleString().replace(/,/g, ' '); // 格式化日期
                         // 创建包含文件名和修改时间的列表项
-                        htmlContent += `<li><a href="file.html?name=${encodeURIComponent(fileName)}">${moFileName}</a><span class="mtime">${mtime}</span></li>`;
+                        // htmlContent += `<li><a href="file.html?name=${encodeURIComponent(fileName)}">${moFileName}</a><span class="mtime">${mtime}</span></li>`;
+                        if (fileName.endsWith('txt')) {
+                            // 如果是txt文件，显示文件名称和修改时间
+                            htmlContent += `<li><a href="file.html?name=${encodeURIComponent(dir)+'/'+encodeURIComponent(fileName)}">${moFileName}</a><span class="mtime">${mtime}</span></li>`;
+                        } else {
+                            // 如果是文件夹，显示文件夹名称并添加链接到文件夹页面
+                            htmlContent += `<li><a href="index.html?dir=${encodeURIComponent(fileName)}"><img src="web_icon/yanan.png" class='folder_icon'>${moFileName}</a><span class="mtime">${mtime}</span></li>`;
+                        }
                     });
                     htmlContent += '</ul>';
                     fileListDiv.innerHTML = htmlContent;

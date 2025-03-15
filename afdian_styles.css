@@ -132,6 +132,12 @@ tr:nth-child(even) {
 background-color: #ffffff;
 }
 
+::selection {
+    background-color: #444; /* 设置选中文本的背景色 */
+    color: #fff;
+  }
+  
+
 /* tr:hover {
 background-color: #f1f1f1;
 } */
@@ -167,6 +173,11 @@ background-color: #f1f1f1;
     pre {
         background-color: #252525;
     }
+
+    ::selection {
+        background-color: #ccc; /* 设置选中文本的背景色 */
+        color: #000;
+      }
 }
 
 @media (max-width: 40em) {

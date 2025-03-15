@@ -121,7 +121,8 @@
                         // htmlContent += `<li><a href="file.html?name=${encodeURIComponent(fileName)}">${moFileName}</a><span class="mtime">${mtime}</span></li>`;
                         if (fileName.endsWith('txt')) {
                             // 如果是txt文件，显示文件名称和修改时间
-                            htmlContent += `<li><a href="file.html?name=${encodeURIComponent(dir)+'/'+encodeURIComponent(fileName)}">${moFileName}</a><span class="mtime">${mtime}</span></li>`;
+                            // htmlContent += `<li><a href="file.html?name=${encodeURIComponent(dir)+'/'+encodeURIComponent(fileName)}">${moFileName}</a><span class="mtime">${mtime}</span></li>`;
+                            htmlContent += `<li><a href="file.html?name=${dir && dir !== '' ? encodeURIComponent(dir) + '/' : ''}${encodeURIComponent(fileName)}">${moFileName}</a><span class="mtime">${mtime}</span></li>`;
                         } else {
                             // 如果是文件夹，显示文件夹名称并添加链接到文件夹页面
                             htmlContent += `<li><a href="index.html?dir=${encodeURIComponent(fileName)}"><img src="web_icon/folder.svg" class='folder_icon'>${moFileName}</a><span class="mtime">${mtime}</span></li>`;

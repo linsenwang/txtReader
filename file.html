@@ -39,6 +39,9 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.13.11/contrib/auto-render.min.js"></script>
 
     <script>
+        // var fileName = urlParams.get('name');
+        var fileName = '';
+
         document.addEventListener('keydown', (event) => {
             // 检测是否按下了 Shift + Command + O
             // if (event.shiftKey && event.metaKey && event.key === 'o') {
@@ -52,7 +55,7 @@
         document.addEventListener('DOMContentLoaded', function() {
             // 获取 URL 中的文件名参数
             const urlParams = new URLSearchParams(window.location.search);
-            const fileName = urlParams.get('name');
+            fileName = urlParams.get('name');
 
             if (!fileName) {
                 alert('未提供文件名参数');
@@ -128,6 +131,10 @@
                 console.log('生成的 HTML 内容：', html);
                 contentDiv.innerHTML = html;
 
+                contentDiv.querySelectorAll('*').forEach((el, index) => {
+                    el.id = `${index + 1}`;
+                });
+
                 // 渲染数学公式
                 if (typeof renderMathInElement === 'undefined') {
                     console.error('renderMathInElement 函数未定义');
@@ -144,5 +151,45 @@
             }
         });
     </script>
+
+    <script type="module">
+        import { getMiddlePIndex } from './recLoc.js';
+    
+        let firstLoad = true;  // 用于标记是否是第一次加载
+    
+        setInterval(() => {
+            const middlePIndex = getMiddlePIndex();
+    
+            console.log(fileName, "当前中间的 p 是第", middlePIndex, "个");
+    
+            // 通过 fetch 将信息发送到服务器
+            fetch('/log-middle-p-index', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    fileName: fileName,
+                    middlePIndex: middlePIndex
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                console.log('服务器响应:', data);
+    
+                // 如果是页面首次加载，滚动到 maxValue 的 id 位置
+                if (firstLoad && data.maxValue) {
+                    firstLoad = false;
+                    const targetElement = document.getElementById(data.maxValue);
+                    if (targetElement) {
+                        targetElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    }
+                }
+            })
+            .catch(error => console.error('发送数据失败:', error));
+        }, 3000);
+    </script>
+    
+    
 </body>
 </html>

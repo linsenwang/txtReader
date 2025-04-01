@@ -71,6 +71,48 @@ app.get('/file-content', (req, res) => {
 });
 });
 
+app.use(express.json());
+const CryptoJS = require('crypto-js');
+
+app.post('/log-middle-p-index', (req, res) => {
+    const { fileName, middlePIndex } = req.body;
+
+    if (!fileName || middlePIndex === undefined) {
+        return res.status(400).json({ error: '缺少必要的参数' });
+    }
+
+    console.log(`接收到来自文件 ${fileName} 的索引：`, middlePIndex);
+
+    const hash = CryptoJS.MD5(fileName).toString(CryptoJS.enc.Hex);
+    console.log(`计算出的 hash: ${hash}`);
+
+    fs.readFile('hashes.json', 'utf8', (err, fileData) => {
+        let hashes = {};
+
+        if (!err && fileData) {
+            try {
+                hashes = JSON.parse(fileData);
+            } catch (parseErr) {
+                console.error('JSON 解析错误:', parseErr);
+            }
+        }
+
+        // 获取当前存储的值
+        const storedValue = hashes[hash] !== undefined ? hashes[hash] : Number.NEGATIVE_INFINITY;
+
+        // 取较大的值
+        const maxValue = Math.max(storedValue, middlePIndex);
+        hashes[hash] = maxValue;
+
+        fs.writeFile('hashes.json', JSON.stringify(hashes, null, 2), (err) => {
+            if (err) {
+                return res.status(500).json({ error: '保存数据时发生错误' });
+            }
+            res.json({ message: '数据已接收并存储', hash, maxValue });
+        });
+    });
+});
+
 // 启动服务器
 app.listen(3000, () => {
     console.log('服务器已启动：http://localhost:3000');

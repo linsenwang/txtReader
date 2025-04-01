@@ -19,6 +19,7 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 turbo-debug.log*
+nohup.out
 
 # 忽略依赖锁定文件（如果你的项目不需要锁定）
 package-lock.json

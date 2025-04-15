@@ -75,6 +75,21 @@
             display: block; /* 确保时间单独占据一行并居中 */
         }
 
+        #toggleFoldersOnly {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            z-index: 999;
+            height: 40px;
+            width: 40px;
+            background-color: rgba(255, 255, 255, 0.5);
+            backdrop-filter: blur(5px);
+            border-radius: 40px;
+            border: none;
+            cursor: pointer;
+        }
+
+
     @media (prefers-color-scheme: dark) {
         .file-list a {
             color: #fff;
@@ -93,6 +108,7 @@
     </style>
 </head>
 <body>
+    <button id="toggleFoldersOnly"><img src="web_icon/folder.svg" class='folder_icon'></button>
     <!-- 文件列表 -->
     <div class="file-list" id="fileList">
         <!-- 文件列表将插入在这里 -->
@@ -122,10 +138,10 @@
                         if (fileName.endsWith('txt')) {
                             // 如果是txt文件，显示文件名称和修改时间
                             // htmlContent += `<li><a href="file.html?name=${encodeURIComponent(dir)+'/'+encodeURIComponent(fileName)}">${moFileName}</a><span class="mtime">${mtime}</span></li>`;
-                            htmlContent += `<li><a href="file.html?name=${dir && dir !== '' ? encodeURIComponent(dir) + '/' : ''}${encodeURIComponent(fileName)}">${moFileName}</a><span class="mtime">${mtime}</span></li>`;
+                            htmlContent += `<li class="file"><a href="file.html?name=${dir && dir !== '' ? encodeURIComponent(dir) + '/' : ''}${encodeURIComponent(fileName)}">${moFileName}</a><span class="mtime">${mtime}</span></li>`;
                         } else {
                             // 如果是文件夹，显示文件夹名称并添加链接到文件夹页面
-                            htmlContent += `<li><a href="index.html?dir=${encodeURIComponent(fileName)}"><img src="web_icon/folder.svg" class='folder_icon'>${moFileName}</a><span class="mtime">${mtime}</span></li>`;
+                            htmlContent += `<li class="folder"><a href="index.html?dir=${encodeURIComponent(fileName)}"><img src="web_icon/folder.svg" class='folder_icon'>${moFileName}</a><span class="mtime">${mtime}</span></li>`;
                         }
                     });
                     htmlContent += '</ul>';
@@ -135,6 +151,31 @@
                     console.error('获取文件列表出错：', error);
                 });
         });
+
+    const button = document.getElementById('toggleFoldersOnly');
+    let foldersOnly = false;
+
+    function toggleFoldersOnly() {
+        foldersOnly = !foldersOnly;
+        const files = document.querySelectorAll('li.file');
+        files.forEach(file => {
+            file.style.display = foldersOnly ? 'none' : '';
+        });
+    }
+
+    button.addEventListener('click', () => {
+        toggleFoldersOnly();
+    });
+
+    document.addEventListener('keydown', function(event) {
+        // Check if Shift + Command (Meta) + S is pressed
+        if (event.shiftKey && event.metaKey && event.key.toLowerCase() === 'f') {
+            event.preventDefault();
+            toggleFoldersOnly();
+        }
+    });
+
+
     </script>
 </body>
 </html>

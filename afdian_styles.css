@@ -104,10 +104,6 @@ blockquote {
 
 .katex-display {
     margin: 0;
-    max-width: 100%;         /* 限制宽度不超出父元素 */
-    overflow-x: auto;        /* 超出时自己滚动，而不是页面滚动 */
-    overflow-y: hidden;      /* 避免多余的垂直滚动 */
-    box-sizing: border-box;  /* 避免边框和 padding 增加实际宽度 */
 }
 
 table {

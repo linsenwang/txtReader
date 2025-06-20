@@ -11,6 +11,7 @@ build/
 .env.local
 .env.development
 .env.production
+hashes.json
 
 # 忽略日志文件
 npm-debug.log*

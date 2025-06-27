@@ -114,6 +114,9 @@ app.post('/log-middle-p-index', (req, res) => {
 });
 
 // 启动服务器
-app.listen(3000, () => {
-    console.log('服务器已启动：http://localhost:3000');
+const PORT = process.env.PORT || 3000;
+const HOST = process.env.HOST || 'localhost';
+
+app.listen(PORT, HOST, () => {
+  console.log(`服务器已启动：http://${HOST}:${PORT}`);
 });

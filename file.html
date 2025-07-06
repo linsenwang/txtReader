@@ -42,159 +42,187 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.13.11/contrib/auto-render.min.js"></script>
 
     <script type="module">
-        // var fileName = urlParams.get('name');
-        var fileName = '';
+    var fileName = '';
 
-        document.addEventListener('keydown', (event) => {
-            // 检测是否按下了 Shift + Command + O
-            // if (event.shiftKey && event.metaKey && event.key === 'o') {
-            if (event.shiftKey && event.metaKey && event.code === 'KeyO') {
-                // 跳转到 index.html
-                window.location.href = './';
-                // window.location.href = './index.html';
-            }
-        });
+    document.addEventListener('keydown', (event) => {
+        if (event.shiftKey && event.metaKey && event.code === 'KeyO') {
+            window.location.href = './';
+        }
+    });
 
-        document.addEventListener('DOMContentLoaded', function() {
-            // 获取 URL 中的文件名参数
-            const urlParams = new URLSearchParams(window.location.search);
-            fileName = urlParams.get('name');
+    document.addEventListener('DOMContentLoaded', function() {
+        const urlParams = new URLSearchParams(window.location.search);
+        fileName = urlParams.get('name');
 
-            if (!fileName) {
-                alert('未提供文件名参数');
-                return;
-            }
-
-            function fixLatexTextSubscripts(content) {
-                // 正则表达式匹配 \text 和后续的两个括号内容
-                const regex = /\\text\{([^{}]+)\}_\{([^{}]+)\}/g;
-
-                // 使用正则替换，保留第一个括号的内容和后面的子脚本部分
-                const fixedContent = content.replace(regex, (match, textContent, subscript) => {
-                    return `${textContent}_${subscript}`;
-                });
-
-                return fixedContent;
-            }
-
-            // 更新页面标题
-            document.title = fileName.replace('.txt', '').trim();
-
-            // 获取文件内容并渲染
-            fetchFileContent(fileName);
-
-            function fetchFileContent(fileName) {
-                console.log('请求文件内容：', fileName); // 调试信息
-                fetch('/file-content?name=' + encodeURIComponent(fileName))
-                    .then(response => {
-                        console.log('响应状态：', response.status); // 调试信息
-                        if (!response.ok) {
-                            throw new Error('网络响应错误，状态码：' + response.status);
-                        }
-                        return response.text();
-                    })
-                    .then(text => {
-                        console.log('文件内容获取成功'); // 调试信息
-
-                        // 对文本进行预处理
-                        text = text
-                            .replace(/\\\(/g, '$')      // 将 `\(` 替换为 `$`
-                            .replace(/\\\)/g, '$')      // 将 `\)` 替换为 `$`
-                            .replace(/\\\[\n*\s*/g, '$$$$') // 将 `\[` 或 `\[\n` 替换为 `$$`
-                            .replace(/\s*\n*\\\]/g, '$$$$') // 将 `\]` 或 `\]\n` 替换为 `$$`
-                            .replace(/\n+/g, '\n\n')    // 将多个换行替换为两个换行
-                            .trim();
-
-                        text = fixLatexTextSubscripts(text);
-
-                        text = text.replace(/\[音乐\]|\[掌声\]|（掌声）|（音乐）|【音乐】|【掌声】/g, '').trim();
-
-                        console.log('开始渲染内容'); // 调试信息
-                        parseMarkdownToHtml(text);
-                        checkAndSendMiddlePIndex();
-                    })
-                    .catch(error => {
-                        console.error('获取文件内容出错：', error);
-                        alert('无法获取文件内容，请检查控制台以获取更多信息。');
-                    });
-            }
-
-            // 渲染函数
-            function parseMarkdownToHtml(text) {
-                console.log('正在执行 parseMarkdownToHtml 函数');
-                const contentDiv = document.getElementById('content');
-                contentDiv.innerHTML = ''; // 清空之前的内容
-
-                // 测试 marked 是否可用
-                if (typeof marked === 'undefined') {
-                    console.error('marked 库未定义');
-                    return;
-                }
-
-                const html = marked.parse(text);
-                console.log('生成的 HTML 内容：', html);
-                contentDiv.innerHTML = html;
-
-                contentDiv.querySelectorAll('*').forEach((el, index) => {
-                    el.id = `${index + 1}`;
-                });
-
-                // 渲染数学公式
-                if (typeof renderMathInElement === 'undefined') {
-                    console.error('renderMathInElement 函数未定义');
-                    return;
-                }
-                renderMathInElement(contentDiv, {
-                    delimiters: [
-                        { left: "$$", right: "$$", display: true },
-                        { left: "\\[", right: "\\]", display: true },
-                        { left: "$", right: "$", display: false },
-                        { left: "\\(", right: "\\)", display: false }
-                    ]
-                });
-            }
-        });
-
-        import { getMiddlePIndex } from './recLoc.js';
-    
-        let firstLoad = true;  // 用于标记是否是第一次加载
-    
-        function checkAndSendMiddlePIndex() {
-            const middlePIndex = getMiddlePIndex();
-
-            console.log(fileName, "当前中间的 p 是第", middlePIndex, "个");
-
-            fetch('/log-middle-p-index', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    fileName: fileName,
-                    middlePIndex: middlePIndex
-                })
-            })
-            .then(response => response.json())
-            .then(data => {
-                console.log('服务器响应:', data);
-
-                if (firstLoad && data.maxValue) {
-                    firstLoad = false;
-                    const targetElement = document.getElementById(data.maxValue);
-                    if (targetElement) {
-                        targetElement.scrollIntoView({ behavior: 'auto', block: 'center' });
-                    }
-                }
-            })
-            .catch(error => console.error('发送数据失败:', error));
+        if (!fileName) {
+            alert('未提供文件名参数');
+            return;
         }
 
-        // 页面加载时立刻执行一次
-        console.log('man');
+        // 更新页面标题
+        document.title = fileName.replace('.txt', '').trim();
 
-        // 每 3 秒执行一次
-        setInterval(checkAndSendMiddlePIndex, 3000);
-    </script>
+        // 获取文件内容并渲染
+        fetchFileContent(fileName);
+    });
+
+    function fixLatexTextSubscripts(content) {
+        const regex = /\\text\{([^{}]+)\}_\{([^{}]+)\}/g;
+        const fixedContent = content.replace(regex, (match, textContent, subscript) => {
+            return `${textContent}_${subscript}`;
+        });
+        return fixedContent;
+    }
+
+    /**
+     * 预处理文本，解决 Markdown 和 KaTeX 之间的冲突
+     * @param {string} text - 原始文件内容
+     * @returns {string} - 处理后的文本
+     */
+    function preprocessText(text) {
+        // 1. 保护数学公式块，防止段落处理破坏它们
+        const mathBlocks = [];
+        // 正则表达式匹配 $$...$$ 或 \[...\] 块。/s 标志让 . 匹配换行符。
+        const blockRegex = /(\$\$[\s\S]*?\$\$|\\\[[\s\S]*?\\\])/g;
+        
+        let processedText = text.replace(blockRegex, (match) => {
+            mathBlocks.push(match);
+            // 使用一个不会在普通文本中出现的唯一占位符
+            return `__MATH_BLOCK_${mathBlocks.length - 1}__`;
+        });
+
+        // 2. 现在可以安全地处理段落、内联公式和其它清理工作
+        processedText = processedText
+            .replace(/\\\(/g, '$')      // 将 \(` 替换为 `$`
+            .replace(/\\\)/g, '$')      // 将 `\) 替换为 `$`
+            .replace(/\n+/g, '\n\n')    // 将多个换行替换为两个换行 (现在是安全的)
+            .replace(/\[音乐\]|\[掌声\]|（掌声）|（音乐）|【音乐】|【掌声】/g, '')
+            .trim();
+
+        // 3. 恢复数学公式块
+        processedText = processedText.replace(/__MATH_BLOCK_(\d+)__/g, (match, index) => {
+            // 在恢复时，顺便统一块级公式的分隔符为 $$
+            let block = mathBlocks[parseInt(index, 10)];
+            return block.replace(/\\\[/g, '$$').replace(/\\\]/g, '$$');
+        });
+        
+        // 4. 对恢复后的完整文本进行最后的 LaTeX 修正
+        processedText = fixLatexTextSubscripts(processedText);
+
+        return processedText;
+    }
+
+    function fetchFileContent(fileName) {
+        console.log('请求文件内容：', fileName);
+        fetch('/file-content?name=' + encodeURIComponent(fileName))
+            .then(response => {
+                console.log('响应状态：', response.status);
+                if (!response.ok) {
+                    throw new Error('网络响应错误，状态码：' + response.status);
+                }
+                return response.text();
+            })
+            .then(text => {
+                console.log('文件内容获取成功');
+                
+                // 使用新的预处理函数
+                const processedText = preprocessText(text);
+
+                console.log('开始渲染内容');
+                parseMarkdownToHtml(processedText);
+                checkAndSendMiddlePIndex();
+            })
+            .catch(error => {
+                console.error('获取文件内容出错：', error);
+                alert('无法获取文件内容，请检查控制台以获取更多信息。');
+            });
+    }
+
+    function parseMarkdownToHtml(text) {
+        console.log('正在执行 parseMarkdownToHtml 函数');
+        const contentDiv = document.getElementById('content');
+        contentDiv.innerHTML = ''; // 清空之前的内容
+
+        if (typeof marked === 'undefined') {
+            console.error('marked 库未定义');
+            return;
+        }
+
+        const html = marked.parse(text);
+        console.log('生成的 HTML 内容：', html);
+        contentDiv.innerHTML = html;
+
+        contentDiv.querySelectorAll('*').forEach((el, index) => {
+            el.id = `${index + 1}`;
+        });
+
+        if (typeof renderMathInElement === 'undefined') {
+            console.error('renderMathInElement 函数未定义');
+            return;
+        }
+        
+        renderMathInElement(contentDiv, {
+            delimiters: [
+                { left: "$$", right: "$$", display: true },
+                { left: "$", right: "$", display: false },
+                // 下面两行现在是备用，因为我们已经预处理为 $$
+                { left: "\\[", right: "\\]", display: true },
+                { left: "\\(", right: "\\)", display: false }
+            ]
+        });
+    }
+
+    // -------------------------------------------------------------
+    // 以下是您用于记录阅读位置的代码，保持不变
+    // -------------------------------------------------------------
+    import { getMiddlePIndex } from './recLoc.js';
+
+    let firstLoad = true;
+
+    function checkAndSendMiddlePIndex() {
+        const middlePIndex = getMiddlePIndex();
+
+        if (middlePIndex === null) return; // 如果没有p元素，则不发送请求
+
+        console.log(fileName, "当前中间的 p 是第", middlePIndex, "个");
+
+        fetch('/log-middle-p-index', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                fileName: fileName,
+                middlePIndex: middlePIndex
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            console.log('服务器响应:', data);
+
+            if (firstLoad && data.maxValue) {
+                firstLoad = false;
+                const targetElement = document.getElementById(data.maxValue);
+                if (targetElement) {
+                    targetElement.scrollIntoView({ behavior: 'auto', block: 'center' });
+                }
+            }
+        })
+        .catch(error => console.error('发送数据失败:', error));
+    }
+
+    // 页面加载后等待DOM渲染完成再执行首次检查
+    document.addEventListener('DOMContentLoaded', () => {
+            // 首次滚动定位需要一点延迟，确保所有内容（特别是KaTeX）渲染完毕
+        setTimeout(() => {
+            // 首次加载时，我们只关心滚动到上次的位置，不发送新位置
+            // checkAndSendMiddlePIndex 会处理这个逻辑
+        }, 500);
+    });
+
+    // 每 3 秒执行一次
+    setInterval(checkAndSendMiddlePIndex, 3000);
+</script>
     
     
 </body>

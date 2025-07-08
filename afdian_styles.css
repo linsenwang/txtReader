@@ -2,10 +2,8 @@ body {
     font-size: 18px;
     font-family: -apple-system, BlinkMacSystemFont, Helvetica Neue, Arial, PingFang SC, Hiragino Sans GB, Microsoft YaHei, WenQuanYi Micro Hei, sans-serif;
     line-height: 1.5;
-    /* max-width: 33em; */
     max-width: 25em; /* 设置最大宽度 */
     margin: 13em auto;    /* 上下为0，左右自动居中 */
-    /* padding: 3em 0; */
 }
 
 a {
@@ -15,7 +13,7 @@ a {
 }
 
 p {
-    /* white-space: pre-wrap; */
+    overflow-x: scroll;
 }
 
 small {
@@ -34,14 +32,6 @@ h2 {
 h3 {
     font-size: 1em;
 }
-
-/* ul {
-    padding: 0 1em;
-}
-
-ol {
-    padding: 0 1em;
-} */
 
 ul {
     padding: 0;
@@ -137,11 +127,6 @@ background-color: #ffffff;
     background-color: #444; /* 设置选中文本的背景色 */
     color: #fff;
   }
-  
-
-/* tr:hover {
-background-color: #f1f1f1;
-} */
 
 @media (prefers-color-scheme: dark) {
     body {
@@ -172,6 +157,10 @@ background-color: #f1f1f1;
     }
 
     pre {
+        background-color: #252525;
+    }
+
+    code {
         background-color: #252525;
     }
 

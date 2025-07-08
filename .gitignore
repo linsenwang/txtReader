@@ -36,6 +36,7 @@ pnpm-lock.yaml
 .DS_Store
 .htpasswd
 Thumbs.db
+.webui_secret_key
 
 # 忽略 Git 相关的临时文件
 .git/

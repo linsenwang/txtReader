@@ -123,6 +123,7 @@
             // 获取文件列表并显示
             const urlParams = new URLSearchParams(window.location.search);
             const dir = urlParams.get('dir') || ''; // 获取 `dir` 参数，如果不存在则为空字符串
+            document.title = dir || 'txtReader';
             // fetch('/list-files')
             console.log('请求的文件夹：', dir); // 调试信息
 

@@ -119,6 +119,12 @@
 
     <!-- 引入必要的库 -->
     <script>
+        document.addEventListener('keydown', (event) => {
+            if (event.shiftKey && event.metaKey && event.code === 'KeyO') {
+                window.location.href = './';
+            }
+        });
+
         document.addEventListener('DOMContentLoaded', function() {
             // 获取文件列表并显示
             const urlParams = new URLSearchParams(window.location.search);

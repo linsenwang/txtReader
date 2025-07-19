@@ -1,6 +1,6 @@
 body {
     font-size: 18px;
-    font-family: -apple-system, BlinkMacSystemFont, Helvetica Neue, Arial, PingFang SC, Hiragino Sans GB, Microsoft YaHei, WenQuanYi Micro Hei, sans-serif;
+    font-family: Sarasa Mono SC, -apple-system, BlinkMacSystemFont, Helvetica Neue, Arial, PingFang SC, Hiragino Sans GB, Microsoft YaHei, WenQuanYi Micro Hei, sans-serif;
     line-height: 1.5;
     max-width: 25em; /* 设置最大宽度 */
     margin: 13em auto;    /* 上下为0，左右自动居中 */

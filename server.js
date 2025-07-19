@@ -76,6 +76,7 @@ const { Mutex } = require('async-mutex'); // 引入 Mutex
 
 app.use(express.json());
 
+const fsp = require('fs').promises;
 const fileMutex = new Mutex();
 
 app.post('/log-middle-p-index', async (req, res) => { // 将路由处理函数标记为 async
@@ -91,31 +92,27 @@ app.post('/log-middle-p-index', async (req, res) => { // 将路由处理函数�
     console.log(`计算出的 hash: ${hash}`);
 
     // 使用互斥锁确保对文件读写操作的原子性
-    // runExclusive 会等待获取锁，然后执行传入的异步函数，执行完毕后自动释放锁
     try {
         await fileMutex.runExclusive(async () => {
             let hashes = {};
 
             try {
-                const fileData = await fs.readFile('hashes.json', 'utf8');
+                // 使用 fsp.readFile 而不是 fs.readFile
+                const fileData = await fsp.readFile('hashes.json', 'utf8');
                 if (fileData) {
                     hashes = JSON.parse(fileData);
                 }
             } catch (err) {
-                // 如果文件不存在，这是正常情况，表示第一次写入
                 if (err.code === 'ENOENT') {
                     console.log('hashes.json 文件不存在，将创建新文件。');
                 }
-                // 如果是 JSON 解析错误，可能是文件损坏，打印错误并从空对象开始
                 else if (err instanceof SyntaxError) {
                     console.error('JSON 解析错误，hashes.json 文件可能已损坏:', err);
                 }
-                // 其他读取错误
                 else {
                     console.error('读取 hashes.json 文件时发生错误:', err);
-                    // 在这里可以选择向上抛出错误或返回 500 响应
-                    // 为了保证请求能够完成，我们这里继续处理，但文件内容可能不是预期的
-                    // return res.status(500).json({ error: '读取数据时发生错误' }); // 考虑是否在这里中断
+                    // 如果这里需要中断请求，请确保 res.status(...) 被调用
+                    // return res.status(500).json({ error: '读取数据时发生错误' });
                 }
             }
 
@@ -127,7 +124,8 @@ app.post('/log-middle-p-index', async (req, res) => { // 将路由处理函数�
             hashes[hash] = maxValue;
 
             try {
-                await fs.writeFile('hashes.json', JSON.stringify(hashes, null, 2));
+                // 使用 fsp.writeFile 而不是 fs.writeFile
+                await fsp.writeFile('hashes.json', JSON.stringify(hashes, null, 2));
                 // 成功写入后发送响应
                 res.json({ message: '数据已接收并存储', hash, maxValue });
             } catch (writeErr) {
@@ -137,14 +135,13 @@ app.post('/log-middle-p-index', async (req, res) => { // 将路由处理函数�
             }
         });
     } catch (mutexErr) {
-        // 捕获 runExclusive 内部未处理的错误
         console.error('处理请求时发生未知错误:', mutexErr);
-        // 确保即使在 mutex 内部发生异常，也能给客户端响应
-        if (!res.headersSent) { // 避免重复发送响应头
+        if (!res.headersSent) {
             res.status(500).json({ error: '内部服务器错误' });
         }
     }
 });
+
 
 // 启动服务器
 const PORT = process.env.PORT || 3000;

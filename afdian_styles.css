@@ -171,9 +171,5 @@ background-color: #ffffff;
       }
 }
 
-@media (max-width: 40em) {
-    body {
-      margin: 13em 1.3em;
-    }
-  }
+
 

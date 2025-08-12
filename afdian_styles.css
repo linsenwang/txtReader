@@ -171,5 +171,9 @@ background-color: #ffffff;
       }
 }
 
-
+@media (max-width: 40em) {
+    .content {
+      padding: 0 1.3em;
+    }
+  }
 

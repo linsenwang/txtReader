@@ -119,15 +119,15 @@ app.post('/log-middle-p-index', async (req, res) => { // 将路由处理函数�
             // 获取当前存储的值
             const storedValue = hashes[hash] !== undefined ? hashes[hash] : Number.NEGATIVE_INFINITY;
 
-            // 取较大的值
-            const maxValue = Math.max(storedValue, middlePIndex);
-            hashes[hash] = maxValue;
+            // 如果请求中包含 force: true，则直接覆盖，否则取较大的值
+            const valueToStore = req.body.force ? middlePIndex : Math.max(storedValue, middlePIndex);
+            hashes[hash] = valueToStore;
 
             try {
                 // 使用 fsp.writeFile 而不是 fs.writeFile
                 await fsp.writeFile('hashes.json', JSON.stringify(hashes, null, 2));
                 // 成功写入后发送响应
-                res.json({ message: '数据已接收并存储', hash, maxValue });
+                res.json({ message: '数据已接收并存储', hash, maxValue: valueToStore });
             } catch (writeErr) {
                 console.error('保存数据时发生错误:', writeErr);
                 // 写入失败时发送错误响应

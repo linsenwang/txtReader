@@ -24,9 +24,44 @@
             overflow: hidden;
             margin: auto;
         }
+        #forceUpdateButton {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            z-index: 999;
+            height: 40px;
+            width: 40px;
+            background-color: rgba(255, 255, 255, 0);
+            border-radius: 40px;
+            border: none;
+            cursor: pointer;
+            opacity: 0;
+            transition: opacity 0.25s ease;
+        }
+
+        #forceUpdateButton:hover {
+            opacity: 1;
+        }
+
+        .custom-toast {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: #00000005;
+            backdrop-filter: blur(10px);
+            padding: 5px 8px;
+            border-radius: 6px;
+            font-size: 12px;
+            opacity: 0;
+            transform: translateY(-10px);
+            transition: opacity 0.3s ease, transform 0.3s ease;
+            z-index: 9999;
+            pointer-events: none;
+        }
     </style>
 </head>
 <body>
+    <button id="forceUpdateButton"><img src="web_icon/refresh.svg" style="height: 1.2em; width: 1.2em; margin: -0.24em 0.5em;"></button>
     <!-- 返回链接 -->
     <div class="back-link">
         <!-- <a href="index.html">← 返回文件列表</a> -->
@@ -223,6 +258,55 @@
 
     // 每 3 秒执行一次
     setInterval(checkAndSendMiddlePIndex, 3000);
+
+    function forceUpdateMiddlePIndex() {
+        const middlePIndex = getMiddlePIndex();
+
+        if (middlePIndex === null) return; // 如果没有p元素，则不发送请求
+
+        console.log(fileName, "强制更新中间的 p 是第", middlePIndex, "个");
+
+        fetch('/log-middle-p-index', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                fileName: fileName,
+                middlePIndex: middlePIndex,
+                force: true
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            console.log('服务器响应:', data);
+            showToast('位置已更新');
+        })
+        .catch(error => console.error('发送数据失败:', error));
+    }
+
+    document.getElementById('forceUpdateButton').addEventListener('click', forceUpdateMiddlePIndex);
+
+    function showToast(message, duration = 2000) {
+        const toast = document.createElement('div');
+        toast.className = 'custom-toast';
+        toast.innerText = message;
+
+        document.body.appendChild(toast);
+
+        // 淡入
+        setTimeout(() => {
+            toast.style.opacity = '1';
+            toast.style.transform = 'translateY(0)';
+        }, 10);
+
+        // 淡出并删除
+        setTimeout(() => {
+            toast.style.opacity = '0';
+            toast.style.transform = 'translateY(-10px)';
+            setTimeout(() => toast.remove(), 300);
+        }, duration);
+    }
 </script>
     
     

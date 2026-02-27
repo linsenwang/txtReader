@@ -125,7 +125,46 @@
             }
         });
 
-        document.addEventListener('DOMContentLoaded', function() {
+        // 服务器配置
+        const SERVER_CONFIG = {
+            progressOnly: false,
+            remoteServerUrl: ''
+        };
+
+        // 获取服务器配置
+        async function loadServerConfig() {
+            try {
+                const response = await fetch('/server-config');
+                if (response.ok) {
+                    const config = await response.json();
+                    SERVER_CONFIG.progressOnly = config.progressOnly;
+                    SERVER_CONFIG.remoteServerUrl = config.remoteServerUrl;
+                    console.log('服务器配置:', SERVER_CONFIG);
+                }
+            } catch (error) {
+                console.log('获取服务器配置失败，使用默认配置:', error);
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', async function() {
+            // 先获取服务器配置
+            await loadServerConfig();
+
+            // 如果是仅进度服务器模式，显示提示
+            if (SERVER_CONFIG.progressOnly) {
+                const fileListDiv = document.getElementById('fileList');
+                fileListDiv.innerHTML = `
+                    <div style="text-align: center; padding: 50px; color: #666;">
+                        <h2>📚 仅进度服务器模式</h2>
+                        <p>此服务器仅用于保存和同步阅读进度，不提供内容服务。</p>
+                        ${SERVER_CONFIG.remoteServerUrl ? 
+                            `<p>内容服务请访问：<a href="${SERVER_CONFIG.remoteServerUrl}">${SERVER_CONFIG.remoteServerUrl}</a></p>` : 
+                            ''}
+                    </div>
+                `;
+                return;
+            }
+
             // 获取文件列表并显示
             const urlParams = new URLSearchParams(window.location.search);
             const dir = urlParams.get('dir') || ''; // 获取 `dir` 参数，如果不存在则为空字符串

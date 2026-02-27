@@ -5,12 +5,19 @@ require('dotenv').config();
 const app = express();
 app.use(express.static(__dirname));
 
-// const directoryPath = path.resolve('/home/yangqian/Dev/txtReader/pro');
-const baseDirectory = path.resolve(process.env.PRO_DIR);
+// 配置选项
+const PROGRESS_ONLY = process.env.PROGRESS_ONLY === 'true'; // 是否仅作为进度服务器（不提供内容服务）
+const REMOTE_SERVER_URL = process.env.REMOTE_SERVER_URL || ''; // 远端服务器地址，用于获取内容
+const baseDirectory = process.env.PRO_DIR ? path.resolve(process.env.PRO_DIR) : '';
 
 
 // 列出 pro 目录下的所有文件，按修改时间排序
 app.get('/list-files', (req, res) => {
+    // 如果是仅进度服务器模式，返回错误
+    if (PROGRESS_ONLY) {
+        return res.status(503).json({ error: '此服务器仅提供阅读进度服务，不提供内容服务' });
+    }
+
     const requestedDir = req.query.dir || ''; // 获取请求的目录参数
     console.log('发送的文件列表：', requestedDir);
     const directoryPath = path.join(baseDirectory, requestedDir); // 拼接路径
@@ -45,6 +52,11 @@ app.get('/list-files', (req, res) => {
 
 // 获取指定文件内容
 app.get('/file-content', (req, res) => {
+    // 如果是仅进度服务器模式，返回错误
+    if (PROGRESS_ONLY) {
+        return res.status(503).json({ error: '此服务器仅提供阅读进度服务，不提供内容服务' });
+    }
+
     const fileName = req.query.name;
 
     if (!fileName) {
@@ -143,10 +155,56 @@ app.post('/log-middle-p-index', async (req, res) => { // 将路由处理函数�
 });
 
 
+// 获取进度数据接口（供远端服务器查询）
+app.get('/get-progress', (req, res) => {
+    const fileName = req.query.name;
+
+    if (!fileName) {
+        return res.status(400).json({ error: '未提供文件名' });
+    }
+
+    const hash = require('crypto-js').MD5(fileName).toString(require('crypto-js').enc.Hex);
+    
+    try {
+        const fileData = fs.readFileSync('hashes.json', 'utf8');
+        const hashes = JSON.parse(fileData);
+        const progress = hashes[hash];
+        
+        if (progress !== undefined) {
+            res.json({ fileName, hash, progress });
+        } else {
+            res.json({ fileName, hash, progress: null });
+        }
+    } catch (err) {
+        if (err.code === 'ENOENT') {
+            res.json({ fileName, hash, progress: null });
+        } else {
+            console.error('读取进度数据时发生错误:', err);
+            res.status(500).json({ error: '读取进度数据时发生错误' });
+        }
+    }
+});
+
+// 获取服务器配置信息（供前端使用）
+app.get('/server-config', (req, res) => {
+    res.json({
+        progressOnly: PROGRESS_ONLY,
+        remoteServerUrl: REMOTE_SERVER_URL
+    });
+});
+
 // 启动服务器
 const PORT = process.env.PORT || 3000;
 const HOST = process.env.HOST || 'localhost';
 
 app.listen(PORT, HOST, () => {
-  console.log(`服务器已启动：http://${HOST}:${PORT}`);
+    console.log(`服务器已启动：http://${HOST}:${PORT}`);
+    if (PROGRESS_ONLY) {
+        console.log('模式：仅进度服务器（不提供内容服务）');
+    } else {
+        console.log('模式：完整服务器');
+    }
+    if (REMOTE_SERVER_URL) {
+        console.log(`远端进度服务器：${REMOTE_SERVER_URL}`);
+    }
 });

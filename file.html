@@ -78,6 +78,30 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.13.11/contrib/auto-render.min.js"></script>
 
     <script type="module">
+    // 服务器配置
+    const SERVER_CONFIG = {
+        progressOnly: false,
+        remoteServerUrl: ''
+    };
+
+    // 获取服务器配置
+    async function loadServerConfig() {
+        try {
+            const response = await fetch('/server-config');
+            if (response.ok) {
+                const config = await response.json();
+                SERVER_CONFIG.progressOnly = config.progressOnly;
+                SERVER_CONFIG.remoteServerUrl = config.remoteServerUrl;
+                console.log('服务器配置:', SERVER_CONFIG);
+            }
+        } catch (error) {
+            console.log('获取服务器配置失败，使用默认配置:', error);
+        }
+    }
+
+    // 页面加载时获取配置
+    loadServerConfig();
+
     var fileName = '';
 
     document.addEventListener('keydown', (event) => {
@@ -151,7 +175,11 @@
 
     function fetchFileContent(fileName) {
         console.log('请求文件内容：', fileName);
-        fetch('/file-content?name=' + encodeURIComponent(fileName))
+        // 如果当前是仅进度服务器，且有配置远端服务器，则从远端获取内容
+        const contentUrl = SERVER_CONFIG.progressOnly && SERVER_CONFIG.remoteServerUrl 
+            ? `${SERVER_CONFIG.remoteServerUrl}/file-content?name=` + encodeURIComponent(fileName)
+            : '/file-content?name=' + encodeURIComponent(fileName);
+        fetch(contentUrl)
             .then(response => {
                 console.log('响应状态：', response.status);
                 if (!response.ok) {
@@ -216,6 +244,28 @@
 
     let firstLoad = true;
 
+    // 从服务器获取阅读进度
+    async function fetchReadingProgress() {
+        try {
+            // 优先从本地获取，如果本地没有或本地是仅进度服务器且有远端配置，则从远端获取
+            const progressUrl = SERVER_CONFIG.progressOnly && SERVER_CONFIG.remoteServerUrl
+                ? `${SERVER_CONFIG.remoteServerUrl}/get-progress?name=` + encodeURIComponent(fileName)
+                : '/get-progress?name=' + encodeURIComponent(fileName);
+            
+            const response = await fetch(progressUrl);
+            if (response.ok) {
+                const data = await response.json();
+                console.log('获取到的阅读进度:', data);
+                if (data.progress !== null && data.progress !== undefined) {
+                    return data.progress;
+                }
+            }
+        } catch (error) {
+            console.error('获取阅读进度失败:', error);
+        }
+        return null;
+    }
+
     function checkAndSendMiddlePIndex() {
         const middlePIndex = getMiddlePIndex();
 
@@ -223,6 +273,7 @@
 
         console.log(fileName, "当前中间的 p 是第", middlePIndex, "个");
 
+        // 发送进度到当前服务器（保存进度）
         fetch('/log-middle-p-index', {
             method: 'POST',
             headers: {
@@ -234,14 +285,20 @@
             })
         })
         .then(response => response.json())
-        .then(data => {
+        .then(async data => {
             console.log('服务器响应:', data);
 
-            if (firstLoad && data.maxValue) {
+            if (firstLoad) {
                 firstLoad = false;
-                const targetElement = document.getElementById(data.maxValue);
-                if (targetElement) {
-                    targetElement.scrollIntoView({ behavior: 'auto', block: 'center' });
+                // 优先使用从 /get-progress 获取的进度，如果没有则使用当前响应中的值
+                const savedProgress = await fetchReadingProgress();
+                const targetIndex = savedProgress !== null ? savedProgress : data.maxValue;
+                
+                if (targetIndex) {
+                    const targetElement = document.getElementById(targetIndex);
+                    if (targetElement) {
+                        targetElement.scrollIntoView({ behavior: 'auto', block: 'center' });
+                    }
                 }
             }
         })

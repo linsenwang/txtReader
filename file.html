@@ -120,7 +120,7 @@
         }
 
         // 更新页面标题
-        document.title = fileName.replace('.txt', '').trim();
+        document.title = fileName.replace(/\.txt$/i, '').replace(/\.md$/i, '').trim();
 
         // 获取文件内容并渲染
         fetchFileContent(fileName);

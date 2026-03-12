@@ -180,13 +180,15 @@
                     let htmlContent = '<ul>';
                     files.forEach(file => {
                         const fileName = file.name;
-                        const moFileName = file.name.replace(/_/g, ' ').replace(/--/g, ' ').replace(/\.txt$/g, '').replace(/\.md$/g, '').replace(/——/g, ' ');
+                        const moFileName = file.name.replace(/_/g, ' ').replace(/--/g, ' ').replace(/\.txt$/g, '').replace(/\.md$/g, '').replace(/\.epub$/i, '').replace(/——/g, ' ');
                         const mtime = new Date(file.mtime).toLocaleString().replace(/,/g, ' '); // 格式化日期
                         // 创建包含文件名和修改时间的列表项
                         // htmlContent += `<li><a href="file.html?name=${encodeURIComponent(fileName)}">${moFileName}</a><span class="mtime">${mtime}</span></li>`;
-                        if (fileName.endsWith('.txt') || fileName.endsWith('.md') || fileName.toLowerCase().endsWith('.epub')) {
-                            // 如果是txt文件，显示文件名称和修改时间
-                            // htmlContent += `<li><a href="file.html?name=${encodeURIComponent(dir)+'/'+encodeURIComponent(fileName)}">${moFileName}</a><span class="mtime">${mtime}</span></li>`;
+                        if (fileName.toLowerCase().endsWith('.epub')) {
+                            // 如果是 EPUB 文件，显示 EPUB 图标
+                            htmlContent += `<li class="file epub"><a href="file.html?name=${dir && dir !== '' ? encodeURIComponent(dir) + '/' : ''}${encodeURIComponent(fileName)}"><img src="web_icon/epub.svg" class='folder_icon'>${moFileName}</a><span class="mtime">${mtime}</span></li>`;
+                        } else if (fileName.endsWith('.txt') || fileName.endsWith('.md')) {
+                            // 如果是 txt/md 文件，显示文件名称和修改时间
                             htmlContent += `<li class="file"><a href="file.html?name=${dir && dir !== '' ? encodeURIComponent(dir) + '/' : ''}${encodeURIComponent(fileName)}">${moFileName}</a><span class="mtime">${mtime}</span></li>`;
                         } else {
                             // 如果是文件夹，显示文件夹名称并添加链接到文件夹页面
@@ -207,9 +209,30 @@
     function toggleFoldersOnly() {
         foldersOnly = !foldersOnly;
         const files = document.querySelectorAll('li.file');
-        files.forEach(file => {
-            file.style.display = foldersOnly ? 'none' : '';
-        });
+        const folders = document.querySelectorAll('li.folder');
+        const epubs = document.querySelectorAll('li.file.epub');
+        
+        if (foldersOnly) {
+            // 只显示文件夹和 EPUB 文件，隐藏纯文本文件
+            files.forEach(file => {
+                if (file.classList.contains('epub')) {
+                    file.style.display = '';
+                } else {
+                    file.style.display = 'none';
+                }
+            });
+            folders.forEach(folder => {
+                folder.style.display = '';
+            });
+        } else {
+            // 显示所有
+            files.forEach(file => {
+                file.style.display = '';
+            });
+            folders.forEach(folder => {
+                folder.style.display = '';
+            });
+        }
     }
 
     button.addEventListener('click', () => {

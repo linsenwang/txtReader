@@ -5,6 +5,16 @@ require('dotenv').config();
 const app = express();
 app.use(express.static(__dirname));
 
+// 动态导入 EPUB 模块（ESM 模块）
+let EPub;
+async function loadEpubModule() {
+    if (!EPub) {
+        const epubModule = await import('epub');
+        EPub = epubModule.EPub;
+    }
+    return EPub;
+}
+
 // 配置选项
 const PROGRESS_ONLY = process.env.PROGRESS_ONLY === 'true'; // 是否仅作为进度服务器（不提供内容服务）
 const REMOTE_SERVER_URL = process.env.REMOTE_SERVER_URL || ''; // 远端服务器地址，用于获取内容
@@ -51,7 +61,7 @@ app.get('/list-files', (req, res) => {
 });
 
 // 获取指定文件内容
-app.get('/file-content', (req, res) => {
+app.get('/file-content', async (req, res) => {
     // 如果是仅进度服务器模式，返回错误
     if (PROGRESS_ONLY) {
         return res.status(503).json({ error: '此服务器仅提供阅读进度服务，不提供内容服务' });
@@ -64,7 +74,6 @@ app.get('/file-content', (req, res) => {
     }
 
     console.log('实际文件：', fileName);
-    // const sanitizedFileName = path.basename(fileName);
     const sanitizedFileName = decodeURIComponent(fileName);
     const filePath = path.join(baseDirectory, sanitizedFileName);
     if (!filePath.startsWith(baseDirectory)) {
@@ -73,15 +82,100 @@ app.get('/file-content', (req, res) => {
 
     console.log('实际文件路径：', filePath);
 
+    // 检查是否为 EPUB 文件（使用解码后的文件名）
+    if (sanitizedFileName.toLowerCase().endsWith('.epub')) {
+        return await readEpubFile(filePath, res);
+    }
+
     fs.readFile(filePath, 'utf8', (err, data) => {
         if (err) {
             console.error('读取文件出错：', err);
             return res.status(500).send('无法读取文件：' + err);
         }
         res.send(data);
-        // console.log(data);
+    });
 });
-});
+
+// 读取 EPUB 文件内容
+async function readEpubFile(filePath, res) {
+    console.log('开始解析 EPUB 文件：', filePath);
+    
+    // 检查文件是否存在
+    if (!fs.existsSync(filePath)) {
+        console.error('EPUB 文件不存在：', filePath);
+        return res.status(404).send('EPUB 文件不存在');
+    }
+    
+    try {
+        // 确保 EPub 类已加载
+        const EpubClass = await loadEpubModule();
+        const epub = new EpubClass(filePath);
+        
+        // 解析 EPUB
+        await epub.parse();
+        
+        console.log('EPUB 解析完成，章节数：', epub.flow ? epub.flow.length : 0);
+        
+        // 获取所有章节内容
+        if (!epub.flow || epub.flow.length === 0) {
+            console.log('EPUB 没有可读取的章节');
+            return res.send('# ' + (path.basename(filePath, '.epub') || '无标题') + '\n\n（此 EPUB 文件没有可读内容）');
+        }
+        
+        // 遍历 flow 获取章节
+        const chapterPromises = epub.flow.map((chapter, index) => {
+            return epub.getChapter(chapter.id).then(text => {
+                return { 
+                    index, 
+                    title: chapter.title || '', 
+                    content: text 
+                };
+            }).catch(err => {
+                console.warn(`获取章节 ${chapter.id} 失败：`, err.message);
+                return { index, title: chapter.title || '', content: '' };
+            });
+        });
+        
+        const results = await Promise.all(chapterPromises);
+        
+        // 按顺序合并所有章节
+        results.sort((a, b) => a.index - b.index);
+        
+        let fullContent = '';
+        
+        // 添加每个章节
+        results.forEach(chapter => {
+            if (chapter.content && chapter.content.trim()) {
+                // 移除 HTML 标签，保留纯文本
+                const textContent = chapter.content
+                    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+                    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+                    .replace(/<[^>]+>/g, '\n')
+                    .replace(/&nbsp;/g, ' ')
+                    .replace(/&lt;/g, '<')
+                    .replace(/&gt;/g, '>')
+                    .replace(/&amp;/g, '&')
+                    .replace(/&quot;/g, '"')
+                    .replace(/\n\s*\n/g, '\n\n')
+                    .trim();
+                
+                if (textContent) {
+                    if (chapter.title) {
+                        fullContent += `## ${chapter.title}\n\n`;
+                    }
+                    fullContent += textContent + '\n\n';
+                }
+            }
+        });
+        
+        console.log('EPUB 内容提取完成，长度：', fullContent.length);
+        res.send(fullContent);
+        
+    } catch (err) {
+        console.error('读取 EPUB 文件出错：', err);
+        res.status(500).send('无法读取 EPUB 文件：' + err.message);
+    }
+}
 
 const CryptoJS = require('crypto-js');
 const { Mutex } = require('async-mutex'); // 引入 Mutex

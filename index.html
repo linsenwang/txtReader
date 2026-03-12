@@ -184,7 +184,7 @@
                         const mtime = new Date(file.mtime).toLocaleString().replace(/,/g, ' '); // 格式化日期
                         // 创建包含文件名和修改时间的列表项
                         // htmlContent += `<li><a href="file.html?name=${encodeURIComponent(fileName)}">${moFileName}</a><span class="mtime">${mtime}</span></li>`;
-                        if (fileName.endsWith('.txt') || fileName.endsWith('.md')) {
+                        if (fileName.endsWith('.txt') || fileName.endsWith('.md') || fileName.toLowerCase().endsWith('.epub')) {
                             // 如果是txt文件，显示文件名称和修改时间
                             // htmlContent += `<li><a href="file.html?name=${encodeURIComponent(dir)+'/'+encodeURIComponent(fileName)}">${moFileName}</a><span class="mtime">${mtime}</span></li>`;
                             htmlContent += `<li class="file"><a href="file.html?name=${dir && dir !== '' ? encodeURIComponent(dir) + '/' : ''}${encodeURIComponent(fileName)}">${moFileName}</a><span class="mtime">${mtime}</span></li>`;

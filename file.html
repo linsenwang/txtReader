@@ -8,6 +8,16 @@
     <link rel="stylesheet" type="text/css" href="afdian_styles.css">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
+        @font-face {
+            font-family: 'SarasaMonoSC';
+            src: url('/fonts/SarasaMonoSC-Regular.ttf') format('truetype');
+            font-display: swap;
+        }
+        
+        body {
+            font-family: 'SarasaMonoSC', Arial, sans-serif;
+        }
+        
         /* 样式代码 */
         .back-link {
             margin-bottom: 20px;
@@ -24,6 +34,120 @@
             overflow: hidden;
             margin: auto;
         }
+        
+        /* 翻页模式样式 */
+        .content.paginated {
+            height: calc(100vh - 120px);
+            overflow: hidden;
+            position: relative;
+        }
+        
+        .content.paginated .page {
+            height: 100%;
+            overflow: hidden;
+            padding: 20px;
+            box-sizing: border-box;
+            display: none;
+        }
+        
+        .content.paginated .page.active {
+            display: block;
+        }
+        
+        /* 分页控制按钮 - 右下角 */
+        .page-controls {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            z-index: 1000;
+            opacity: 0;
+            transition: opacity 0.25s ease;
+        }
+        
+        .page-controls:hover,
+        body:hover .page-controls {
+            opacity: 1;
+        }
+        
+        .page-btn {
+            height: 40px;
+            width: 40px;
+            background-color: rgba(255, 255, 255, 0);
+            border-radius: 40px;
+            border: none;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0;
+        }
+        
+        .page-btn img {
+            height: 1.2em;
+            width: 1.2em;
+            opacity: 0.7;
+        }
+        
+        .page-btn:hover img {
+            opacity: 1;
+        }
+        
+        .page-btn:disabled {
+            opacity: 0.2;
+            cursor: not-allowed;
+        }
+        
+        .page-info {
+            font-size: 14px;
+            min-width: 60px;
+            text-align: center;
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(10px);
+            padding: 6px 10px;
+            border-radius: 20px;
+        }
+        
+        @media (prefers-color-scheme: dark) {
+            .page-info {
+                background: rgba(40, 40, 40, 0.8);
+            }
+        }
+        
+        .mode-toggle {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 999;
+            height: 40px;
+            width: 40px;
+            background-color: rgba(255, 255, 255, 0);
+            border-radius: 40px;
+            border: none;
+            cursor: pointer;
+            opacity: 0;
+            transition: opacity 0.25s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .mode-toggle img {
+            height: 1.2em;
+            width: 1.2em;
+            opacity: 0.7;
+        }
+        
+        .mode-toggle:hover img {
+            opacity: 1;
+        }
+        
+        body:hover .mode-toggle {
+            opacity: 1;
+        }
+        
         #forceUpdateButton {
             position: fixed;
             top: 20px;
@@ -46,7 +170,7 @@
         .custom-toast {
             position: fixed;
             top: 20px;
-            right: 20px;
+            right: 70px;
             background: #00000005;
             backdrop-filter: blur(10px);
             padding: 5px 8px;
@@ -61,7 +185,9 @@
     </style>
 </head>
 <body>
-    <button id="forceUpdateButton"><img src="web_icon/refresh.svg" style="height: 1.2em; width: 1.2em; margin: -0.24em 0.5em;"></button>
+    <button id="forceUpdateButton" title="刷新位置"><img src="web_icon/refresh.svg" style="height: 1.2em; width: 1.2em; margin: -0.24em 0.5em;"></button>
+    <button id="modeToggle" class="mode-toggle" title="切换翻页/滚动模式"><img src="web_icon/epub.svg" style="height: 1.2em; width: 1.2em; margin: -0.24em 0.5em;"></button>
+    
     <!-- 返回链接 -->
     <div class="back-link">
         <!-- <a href="index.html">← 返回文件列表</a> -->
@@ -70,6 +196,13 @@
     <!-- 渲染后的内容 -->
     <div class="content" id="content">
         <!-- 渲染后的内容将会插入在这里 -->
+    </div>
+    
+    <!-- 分页控制 - 右下角 -->
+    <div class="page-controls" id="pageControls" style="display: none;">
+        <button class="page-btn" id="prevPage" title="上一页 (←)"><img src="web_icon/folder.svg" style="transform: rotate(180deg);"></button>
+        <span class="page-info" id="pageInfo">1 / 1</span>
+        <button class="page-btn" id="nextPage" title="下一页 (→)"><img src="web_icon/folder.svg"></button>
     </div>
 
     <!-- 引入必要的库 -->
@@ -103,6 +236,12 @@
     loadServerConfig();
 
     var fileName = '';
+    
+    // 阅读模式状态
+    let isPaginated = localStorage.getItem('readingMode') === 'paginated';
+    let currentPage = 1;
+    let totalPages = 1;
+    let pages = [];
 
     document.addEventListener('keydown', (event) => {
         if (event.shiftKey && event.metaKey && event.code === 'KeyO') {
@@ -124,6 +263,30 @@
 
         // 获取文件内容并渲染
         fetchFileContent(fileName);
+        
+        // 初始化模式切换按钮
+        const modeToggle = document.getElementById('modeToggle');
+        modeToggle.textContent = isPaginated ? '📄' : '📖';
+        modeToggle.title = isPaginated ? '切换为滚动模式' : '切换为翻页模式';
+        modeToggle.addEventListener('click', toggleReadingMode);
+        
+        // 分页控制按钮事件
+        document.getElementById('prevPage').addEventListener('click', prevPage);
+        document.getElementById('nextPage').addEventListener('click', nextPage);
+        
+        // 键盘翻页快捷键
+        document.addEventListener('keydown', (event) => {
+            // 左右箭头翻页
+            if (isPaginated) {
+                if (event.key === 'ArrowLeft' || event.key === 'PageUp') {
+                    event.preventDefault();
+                    prevPage();
+                } else if (event.key === 'ArrowRight' || event.key === 'PageDown' || event.key === ' ') {
+                    event.preventDefault();
+                    nextPage();
+                }
+            }
+        });
     });
 
     function fixLatexTextSubscripts(content) {
@@ -190,6 +353,10 @@
             .then(text => {
                 console.log('文件内容获取成功');
                 
+                // 保存原始文本以便切换模式时重新渲染
+                const contentDiv = document.getElementById('content');
+                contentDiv.setAttribute('data-original-text', text);
+                
                 // 使用新的预处理函数
                 const processedText = preprocessText(text);
 
@@ -235,6 +402,260 @@
                 { left: "\\(", right: "\\)", display: false }
             ]
         });
+        
+        // 渲染完成后，如果是翻页模式则进行分页
+        if (isPaginated) {
+            setTimeout(() => {
+                paginateContent();
+            }, 100);
+        }
+    }
+    
+    // 估算元素行数（基于文本内容和样式）
+    function estimateElementLines(el, lineHeight, contentWidth) {
+        const style = window.getComputedStyle(el);
+        const fontSize = parseFloat(style.fontSize) || 16;
+        
+        // 获取元素文本内容
+        const text = el.textContent || '';
+        const textLength = text.length;
+        
+        // 估算每行能容纳的字符数（根据字体大小）
+        // 中文字符约等于字体大小，英文字符约字体大小的一半
+        const avgCharWidth = fontSize * 0.6; // 平均字符宽度
+        const charsPerLine = Math.floor(contentWidth / avgCharWidth);
+        
+        if (charsPerLine === 0) return 1;
+        
+        // 计算文本行数
+        let textLines = Math.ceil(textLength / charsPerLine);
+        
+        // 根据元素类型添加额外行数（标题、段落间距等）
+        const tagName = el.tagName.toLowerCase();
+        let extraLines = 0;
+        
+        if (tagName.match(/^h[1-6]$/)) {
+            // 标题占用更多行（字体更大）
+            const level = parseInt(tagName[1]);
+            extraLines = 4 - level; // h1 多3行，h6 多0行
+        } else if (tagName === 'p') {
+            // 段落间距
+            const marginBottom = parseFloat(style.marginBottom) || 0;
+            extraLines = Math.ceil(marginBottom / lineHeight);
+        }
+        
+        // 图片、代码块等固定高度元素
+        if (tagName === 'img' || tagName === 'pre' || tagName === 'blockquote' || tagName === 'table') {
+            const height = el.getBoundingClientRect().height || (fontSize * 3);
+            textLines = Math.ceil(height / lineHeight);
+        }
+        
+        return Math.max(1, textLines + extraLines);
+    }
+    
+    // 分页功能 - 按行数计算
+    function paginateContent() {
+        const contentDiv = document.getElementById('content');
+        const elements = Array.from(contentDiv.children);
+        
+        if (elements.length === 0) return;
+        
+        // 获取样式参数
+        const computedStyle = window.getComputedStyle(contentDiv);
+        const fontSize = parseFloat(computedStyle.fontSize) || 16;
+        const lineHeight = parseFloat(computedStyle.lineHeight) || (fontSize * 1.6);
+        const contentWidth = contentDiv.clientWidth - 40; // 减去内边距
+        
+        // 计算每页行数（视口高度减去边距，再除以行高）
+        const pageHeight = window.innerHeight - 120; // 减去顶部和底部边距
+        const linesPerPage = Math.max(5, Math.floor(pageHeight / lineHeight));
+        
+        console.log('分页参数:', { fontSize, lineHeight, pageHeight, linesPerPage, contentWidth });
+        
+        // 先计算所有元素的行数
+        const elementsWithLines = elements.map(el => ({
+            el: el.cloneNode(true),
+            lines: estimateElementLines(el, lineHeight, contentWidth)
+        }));
+        
+        // 保存原始内容
+        contentDiv.innerHTML = '';
+        contentDiv.classList.add('paginated');
+        
+        pages = [];
+        let currentPageDiv = document.createElement('div');
+        currentPageDiv.className = 'page active';
+        contentDiv.appendChild(currentPageDiv);
+        
+        let currentPageLines = 0;
+        
+        elementsWithLines.forEach(({ el, lines }) => {
+            // 如果当前页为空，直接添加
+            if (currentPageLines === 0) {
+                currentPageDiv.appendChild(el);
+                currentPageLines += lines;
+            }
+            // 如果添加后不超过行数限制，添加
+            else if (currentPageLines + lines <= linesPerPage) {
+                currentPageDiv.appendChild(el);
+                currentPageLines += lines;
+            }
+            // 否则创建新页面
+            else {
+                currentPageDiv = document.createElement('div');
+                currentPageDiv.className = 'page';
+                contentDiv.appendChild(currentPageDiv);
+                
+                currentPageDiv.appendChild(el);
+                currentPageLines = lines;
+            }
+        });
+        
+        pages = contentDiv.querySelectorAll('.page');
+        totalPages = pages.length;
+        
+        console.log('分页完成，总页数:', totalPages);
+        
+        // 显示分页控制
+        const pageControls = document.getElementById('pageControls');
+        pageControls.style.display = 'flex';
+        
+        // 更新页码显示
+        currentPage = 1;
+        updatePageInfo();
+        updatePageButtons();
+        showPage(1);
+        
+        // 恢复阅读进度
+        restorePaginatedProgress();
+    }
+    
+    // 显示指定页面
+    function showPage(pageNum) {
+        if (pageNum < 1 || pageNum > totalPages) return;
+        
+        pages.forEach((page, index) => {
+            if (index === pageNum - 1) {
+                page.classList.add('active');
+            } else {
+                page.classList.remove('active');
+            }
+        });
+    }
+    
+    // 切换到指定页面
+    function goToPage(pageNum) {
+        if (pageNum < 1 || pageNum > totalPages) return;
+        
+        currentPage = pageNum;
+        showPage(currentPage);
+        updatePageInfo();
+        updatePageButtons();
+        
+        // 保存阅读进度（页码）
+        savePaginatedProgress();
+    }
+    
+    // 下一页
+    function nextPage() {
+        if (currentPage < totalPages) {
+            goToPage(currentPage + 1);
+        }
+    }
+    
+    // 上一页
+    function prevPage() {
+        if (currentPage > 1) {
+            goToPage(currentPage - 1);
+        }
+    }
+    
+    // 更新页码显示
+    function updatePageInfo() {
+        document.getElementById('pageInfo').textContent = `${currentPage} / ${totalPages}`;
+    }
+    
+    // 更新按钮状态
+    function updatePageButtons() {
+        document.getElementById('prevPage').disabled = currentPage === 1;
+        document.getElementById('nextPage').disabled = currentPage === totalPages;
+    }
+    
+    // 切换阅读模式
+    function toggleReadingMode() {
+        isPaginated = !isPaginated;
+        localStorage.setItem('readingMode', isPaginated ? 'paginated' : 'scroll');
+        
+        const contentDiv = document.getElementById('content');
+        const pageControls = document.getElementById('pageControls');
+        const modeToggle = document.getElementById('modeToggle');
+        
+        if (isPaginated) {
+            // 切换到翻页模式
+            modeToggle.title = '切换为滚动模式';
+            paginateContent();
+        } else {
+            // 切换到滚动模式
+            modeToggle.title = '切换为翻页模式';
+            contentDiv.classList.remove('paginated');
+            pageControls.style.display = 'none';
+            
+            // 重新渲染原始内容
+            const text = contentDiv.getAttribute('data-original-text') || '';
+            if (text) {
+                const processedText = preprocessText(text);
+                parseMarkdownToHtmlSimple(processedText);
+            }
+        }
+    }
+    
+    // 简化的渲染（用于切换回滚动模式）
+    function parseMarkdownToHtmlSimple(text) {
+        const contentDiv = document.getElementById('content');
+        contentDiv.innerHTML = '';
+        
+        const html = marked.parse(text);
+        contentDiv.innerHTML = html;
+        
+        contentDiv.querySelectorAll('*').forEach((el, index) => {
+            el.id = `${index + 1}`;
+        });
+        
+        renderMathInElement(contentDiv, {
+            delimiters: [
+                { left: "$$", right: "$$", display: true },
+                { left: "$", right: "$", display: false },
+                { left: "\\[", right: "\\]", display: true },
+                { left: "\\(", right: "\\)", display: false }
+            ]
+        });
+    }
+    
+    // 保存翻页进度
+    function savePaginatedProgress() {
+        const progressData = {
+            mode: 'paginated',
+            page: currentPage,
+            timestamp: Date.now()
+        };
+        localStorage.setItem(`progress_${fileName}`, JSON.stringify(progressData));
+    }
+    
+    // 恢复翻页进度
+    function restorePaginatedProgress() {
+        try {
+            const saved = localStorage.getItem(`progress_${fileName}`);
+            if (saved) {
+                const data = JSON.parse(saved);
+                if (data.mode === 'paginated' && data.page && data.page <= totalPages) {
+                    goToPage(data.page);
+                    return;
+                }
+            }
+        } catch (e) {
+            console.error('恢复翻页进度失败:', e);
+        }
+        goToPage(1);
     }
 
     // -------------------------------------------------------------
@@ -267,6 +688,15 @@
     }
 
     function checkAndSendMiddlePIndex() {
+        // 翻页模式下不发送滚动进度，而是保存页码
+        if (isPaginated) {
+            if (firstLoad) {
+                firstLoad = false;
+                // 翻页模式的恢复在 paginateContent 中处理
+            }
+            return;
+        }
+        
         const middlePIndex = getMiddlePIndex();
 
         if (middlePIndex === null) return; // 如果没有p元素，则不发送请求
@@ -318,6 +748,13 @@
     setInterval(checkAndSendMiddlePIndex, 3000);
 
     function forceUpdateMiddlePIndex() {
+        // 翻页模式下保存页码
+        if (isPaginated) {
+            savePaginatedProgress();
+            showToast(`已保存到第 ${currentPage} 页`);
+            return;
+        }
+        
         const middlePIndex = getMiddlePIndex();
 
         if (middlePIndex === null) return; // 如果没有p元素，则不发送请求

@@ -40,3 +40,5 @@ Thumbs.db
 
 # 忽略 Git 相关的临时文件
 .git/
+
+*.ttf

@@ -15,6 +15,7 @@
 - 🌓 **深色模式**：自动适配系统深色/浅色主题
 - ⌨️ **快捷键**：支持多种快捷键操作
 - 📱 **响应式设计**：适配桌面和移动设备
+- 📲 **PWA 支持**：支持添加到主屏幕，可离线使用（iOS Safari 支持）
 
 ## 🚀 快速开始
 
@@ -130,12 +131,15 @@ txtReader/
 ├── index.html                # 文件列表页面
 ├── file.html                 # 阅读页面
 ├── recLoc.js                 # 阅读位置检测模块
+├── manifest.json             # PWA 配置文件
+├── service-worker.js         # PWA 服务工作者
 ├── hashes.json               # 阅读进度数据存储
 ├── .env                      # 环境变量配置
 ├── afdian_styles.css         # 主样式文件
 ├── afdian_styles-print.css   # 打印样式
 ├── web_icon/                 # 图标资源
 │   ├── yanan.png
+│   ├── yanan-f.png
 │   ├── folder.svg
 │   └── refresh.svg
 └── package.json
@@ -156,6 +160,27 @@ txtReader/
 2. **文件安全**：服务器已做路径安全校验，禁止访问指定目录外的文件
 3. **进度存储**：阅读进度保存在 `hashes.json` 文件中，建议定期备份
 4. **并发写入**：使用互斥锁确保进度文件并发安全
+
+## 📲 PWA 使用指南
+
+### iOS Safari 添加到主屏幕
+
+1. 使用 Safari 打开 txtReader 网页
+2. 点击底部分享按钮（<img src="web_icon/folder.svg" width="16">）
+3. 选择「添加到主屏幕」
+4. 自定义应用名称，点击「添加」
+
+### Android Chrome 添加到主屏幕
+
+1. 使用 Chrome 打开 txtReader 网页
+2. 点击右上角菜单（⋮）
+3. 选择「添加到主屏幕」或「安装应用」
+
+### PWA 功能
+
+- **离线访问**：首次加载后，可在无网络环境下使用
+- **全屏体验**：隐藏浏览器地址栏，提供沉浸式阅读体验
+- **独立应用**：像原生应用一样运行，不在浏览器标签页中显示
 
 ## 🔧 开发计划
 

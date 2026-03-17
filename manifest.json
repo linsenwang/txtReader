@@ -1,0 +1,21 @@
+{
+  "name": "txtReader",
+  "short_name": "txtReader",
+  "description": "简洁优雅的本地文本阅读器，支持 Markdown 渲染和阅读进度同步",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#fff",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "web_icon/yanan_with_border.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["books", "productivity"],
+  "lang": "zh-CN",
+  "dir": "ltr"
+}

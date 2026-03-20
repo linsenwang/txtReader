@@ -10,7 +10,7 @@
     <meta name="theme-color" content="#fff" media="(prefers-color-scheme: light)">
     <meta name="theme-color" content="#1F2020" media="(prefers-color-scheme: dark)">
     <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <meta name="apple-mobile-web-app-title" content="txtReader">
     <link rel="apple-touch-icon" href="web_icon/yanan_with_border.png">
     <link rel="manifest" href="manifest.json">
@@ -252,6 +252,110 @@
     let currentPage = 1;
     let totalPages = 1;
     let pages = [];
+    
+    // EPUB 分段加载管理
+    const EPUB_LOADER = {
+        isEpub: false,
+        totalParagraphs: 0,
+        loadedRanges: [], // 已加载的段落范围 [{start, end}]
+        loadingRanges: new Set(), // 正在加载的范围
+        pendingStartParagraph: null, // 优先加载的起始段落
+        batchSize: 50, // 每批加载的段落数
+        preloadThreshold: 20, // 距离边界多少段落时预加载
+        isLoading: false,
+        chapterMap: [], // 章节映射信息
+        
+        // 检查某段落是否已加载
+        isParagraphLoaded(index) {
+            return this.loadedRanges.some(r => index >= r.start && index <= r.end);
+        },
+        
+        // 获取下一个需要向后加载的起始段落
+        getNextLoadStartForward() {
+            // 找到当前已加载范围的最后一个，继续往后加载
+            if (this.loadedRanges.length === 0) {
+                return 0;
+            }
+            
+            // 按起始位置排序
+            const sorted = [...this.loadedRanges].sort((a, b) => a.start - b.start);
+            const lastRange = sorted[sorted.length - 1];
+            
+            if (lastRange.end >= this.totalParagraphs - 1) {
+                return -1; // 全部加载完成
+            }
+            
+            return lastRange.end + 1;
+        },
+        
+        // 获取下一个需要向前加载的结束段落
+        getNextLoadStartBackward() {
+            // 找到当前已加载范围的第一个，继续往前加载
+            if (this.loadedRanges.length === 0) {
+                return -1;
+            }
+            
+            // 按起始位置排序
+            const sorted = [...this.loadedRanges].sort((a, b) => a.start - b.start);
+            const firstRange = sorted[0];
+            
+            if (firstRange.start <= 0) {
+                return -1; // 已经到开头了
+            }
+            
+            // 返回需要加载的起始段落（往前 batchSize 个）
+            return Math.max(0, firstRange.start - this.batchSize);
+        },
+        
+        // 获取加载间隙（未加载的段落范围）
+        getLoadingGap(startParagraph) {
+            // 检查这个起始位置是否在已加载范围内
+            for (const range of this.loadedRanges) {
+                if (startParagraph >= range.start && startParagraph <= range.end) {
+                    return null; // 已经加载过了
+                }
+            }
+            return { start: startParagraph };
+        },
+        
+        // 合并加载范围
+        mergeRanges() {
+            if (this.loadedRanges.length <= 1) return;
+            
+            this.loadedRanges.sort((a, b) => a.start - b.start);
+            const merged = [this.loadedRanges[0]];
+            
+            for (let i = 1; i < this.loadedRanges.length; i++) {
+                const current = this.loadedRanges[i];
+                const last = merged[merged.length - 1];
+                
+                if (current.start <= last.end + 1) {
+                    last.end = Math.max(last.end, current.end);
+                } else {
+                    merged.push(current);
+                }
+            }
+            
+            this.loadedRanges = merged;
+        },
+        
+        // 添加已加载范围
+        addLoadedRange(start, end) {
+            this.loadedRanges.push({ start, end });
+            this.mergeRanges();
+        },
+        
+        // 重置状态
+        reset() {
+            this.isEpub = false;
+            this.totalParagraphs = 0;
+            this.loadedRanges = [];
+            this.loadingRanges.clear();
+            this.pendingStartParagraph = null;
+            this.isLoading = false;
+            this.chapterMap = [];
+        }
+    };
 
     document.addEventListener('keydown', (event) => {
         if (event.shiftKey && event.metaKey && event.code === 'KeyO') {
@@ -346,9 +450,338 @@
         return processedText;
     }
 
-    function fetchFileContent(fileName) {
+    // 检查是否为 EPUB 文件
+    function isEpubFile(name) {
+        return name.toLowerCase().endsWith('.epub');
+    }
+    
+    // 加载 EPUB 段落范围
+    async function loadEpubRange(startParagraph, isPriority = false, direction = 'forward') {
+        if (!EPUB_LOADER.isEpub) return;
+        if (EPUB_LOADER.isLoading && !isPriority) return;
+        if (startParagraph < 0 || startParagraph >= EPUB_LOADER.totalParagraphs) return;
+        
+        // 检查是否已加载
+        if (EPUB_LOADER.isParagraphLoaded(startParagraph)) return;
+        
+        // 检查是否已经在加载这个范围
+        const rangeKey = `${direction}-${startParagraph}`;
+        if (EPUB_LOADER.loadingRanges.has(rangeKey)) return;
+        
+        EPUB_LOADER.loadingRanges.add(rangeKey);
+        EPUB_LOADER.isLoading = true;
+        
+        console.log(`加载 EPUB 段落范围 [${direction}]: ${startParagraph} ~ ${startParagraph + EPUB_LOADER.batchSize - 1}`);
+        
+        try {
+            const contentUrl = SERVER_CONFIG.progressOnly && SERVER_CONFIG.remoteServerUrl 
+                ? `${SERVER_CONFIG.remoteServerUrl}/epub-content?name=` + encodeURIComponent(fileName) + `&start=${startParagraph}`
+                : '/epub-content?name=' + encodeURIComponent(fileName) + `&start=${startParagraph}`;
+            
+            const response = await fetch(contentUrl);
+            if (!response.ok) throw new Error('网络响应错误');
+            
+            const data = await response.json();
+            
+            // 记录已加载范围
+            EPUB_LOADER.addLoadedRange(data.startParagraph, data.endParagraph);
+            EPUB_LOADER.loadingRanges.delete(rangeKey);
+            
+            // 渲染新加载的内容（根据方向决定插入位置）
+            if (direction === 'backward') {
+                prependEpubContent(data.content, data.startParagraph);
+            } else {
+                appendEpubContent(data.content, data.startParagraph);
+            }
+            
+            // 如果有更多内容且是优先加载，继续加载
+            if (isPriority) {
+                // 优先加载时，继续向两边扩展
+                setTimeout(() => {
+                    // 先向后加载
+                    const nextForward = EPUB_LOADER.getNextLoadStartForward();
+                    if (nextForward >= 0 && nextForward < EPUB_LOADER.totalParagraphs) {
+                        loadEpubRange(nextForward, false, 'forward');
+                    }
+                    // 再向前加载
+                    const nextBackward = EPUB_LOADER.getNextLoadStartBackward();
+                    if (nextBackward >= 0) {
+                        loadEpubRange(nextBackward, false, 'backward');
+                    }
+                }, 100);
+            }
+            
+            return data;
+        } catch (error) {
+            console.error('加载 EPUB 段落失败:', error);
+            EPUB_LOADER.loadingRanges.delete(rangeKey);
+        } finally {
+            EPUB_LOADER.isLoading = false;
+        }
+    }
+    
+    // 追加 EPUB 内容到页面（向后加载）
+    function appendEpubContent(contentHtml, startParagraph) {
+        const contentDiv = document.getElementById('content');
+        
+        // 创建临时容器解析内容
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = marked.parse(contentHtml);
+        
+        // 给每个段落添加ID
+        const paragraphs = tempDiv.querySelectorAll('p[data-index]');
+        paragraphs.forEach(p => {
+            const index = p.getAttribute('data-index');
+            p.id = index;
+        });
+        
+        // 追加到内容区
+        const children = Array.from(tempDiv.children);
+        children.forEach(child => {
+            contentDiv.appendChild(child);
+        });
+        
+        // 渲染数学公式
+        if (typeof renderMathInElement !== 'undefined') {
+            renderMathInElement(contentDiv, {
+                delimiters: [
+                    { left: "$$", right: "$$", display: true },
+                    { left: "$", right: "$", display: false },
+                    { left: "\\[", right: "\\]", display: true },
+                    { left: "\\(", right: "\\)", display: false }
+                ]
+            });
+        }
+        
+        // 如果是翻页模式，需要重新分页
+        if (isPaginated) {
+            setTimeout(() => {
+                paginateContent();
+            }, 100);
+        }
+    }
+    
+    // 向前插入 EPUB 内容（向前加载）
+    function prependEpubContent(contentHtml, startParagraph) {
+        const contentDiv = document.getElementById('content');
+        
+        // 记录当前滚动位置参考点（用于保持滚动位置）
+        const firstElement = contentDiv.querySelector('[id]');
+        const firstElementId = firstElement ? firstElement.id : null;
+        let firstElementOffset = 0;
+        if (firstElement) {
+            const rect = firstElement.getBoundingClientRect();
+            firstElementOffset = rect.top;
+        }
+        
+        // 创建临时容器解析内容
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = marked.parse(contentHtml);
+        
+        // 给每个段落添加ID
+        const paragraphs = tempDiv.querySelectorAll('p[data-index]');
+        paragraphs.forEach(p => {
+            const index = p.getAttribute('data-index');
+            p.id = index;
+        });
+        
+        // 插入到内容区开头
+        const children = Array.from(tempDiv.children);
+        // 需要倒序插入，因为每次 insertBefore 都会在第一个子元素前插入
+        for (let i = children.length - 1; i >= 0; i--) {
+            if (contentDiv.firstChild) {
+                contentDiv.insertBefore(children[i], contentDiv.firstChild);
+            } else {
+                contentDiv.appendChild(children[i]);
+            }
+        }
+        
+        // 渲染数学公式
+        if (typeof renderMathInElement !== 'undefined') {
+            renderMathInElement(contentDiv, {
+                delimiters: [
+                    { left: "$$", right: "$$", display: true },
+                    { left: "$", right: "$", display: false },
+                    { left: "\\[", right: "\\]", display: true },
+                    { left: "\\(", right: "\\)", display: false }
+                ]
+            });
+        }
+        
+        // 恢复滚动位置，避免页面跳动
+        if (firstElementId) {
+            const element = document.getElementById(firstElementId);
+            if (element) {
+                const newRect = element.getBoundingClientRect();
+                const scrollDelta = newRect.top - firstElementOffset;
+                if (Math.abs(scrollDelta) > 1) {
+                    window.scrollBy(0, scrollDelta);
+                }
+            }
+        }
+        
+        // 如果是翻页模式，需要重新分页
+        if (isPaginated) {
+            setTimeout(() => {
+                paginateContent();
+            }, 100);
+        }
+    }
+    
+    // 获取当前视口中间的段落索引
+    function getMiddleParagraphIndex() {
+        const paragraphs = document.querySelectorAll('#content p[data-index]');
+        if (paragraphs.length === 0) return null;
+        
+        const viewportCenter = window.innerHeight / 2 + window.scrollY;
+        let closest = null;
+        let closestDistance = Infinity;
+        
+        paragraphs.forEach(p => {
+            const rect = p.getBoundingClientRect();
+            const center = rect.top + rect.height / 2 + window.scrollY;
+            const distance = Math.abs(center - viewportCenter);
+            
+            if (distance < closestDistance) {
+                closestDistance = distance;
+                closest = parseInt(p.getAttribute('data-index'));
+            }
+        });
+        
+        return closest;
+    }
+    
+    // 检查是否需要预加载（双向）
+    function checkPreload() {
+        if (!EPUB_LOADER.isEpub) return;
+        if (EPUB_LOADER.isLoading) return;
+        
+        const currentMiddle = getMiddleParagraphIndex();
+        if (currentMiddle === null) return;
+        
+        if (EPUB_LOADER.loadedRanges.length === 0) return;
+        
+        const sorted = [...EPUB_LOADER.loadedRanges].sort((a, b) => a.start - b.start);
+        const firstRange = sorted[0];
+        const lastRange = sorted[sorted.length - 1];
+        
+        // 检查是否需要向后加载
+        const distanceToEnd = lastRange.end - currentMiddle;
+        if (distanceToEnd < EPUB_LOADER.preloadThreshold) {
+            const nextStart = lastRange.end + 1;
+            if (nextStart < EPUB_LOADER.totalParagraphs && !EPUB_LOADER.loadingRanges.has(`fwd-${nextStart}`)) {
+                console.log('触发向后预加载，当前段落:', currentMiddle, '已加载到:', lastRange.end);
+                loadEpubRange(nextStart, false, 'forward');
+                return; // 一次只加载一个方向
+            }
+        }
+        
+        // 检查是否需要向前加载
+        const distanceToStart = currentMiddle - firstRange.start;
+        if (distanceToStart < EPUB_LOADER.preloadThreshold) {
+            const prevStart = EPUB_LOADER.getNextLoadStartBackward();
+            if (prevStart >= 0 && !EPUB_LOADER.loadingRanges.has(`bwd-${prevStart}`)) {
+                console.log('触发向前预加载，当前段落:', currentMiddle, '已加载从:', firstRange.start);
+                loadEpubRange(prevStart, false, 'backward');
+            }
+        }
+    }
+    
+    // 滚动事件监听（节流）
+    let scrollTimeout = null;
+    window.addEventListener('scroll', () => {
+        if (scrollTimeout) return;
+        scrollTimeout = setTimeout(() => {
+            checkPreload();
+            scrollTimeout = null;
+        }, 200);
+    });
+
+    async function fetchFileContent(fileName) {
         console.log('请求文件内容：', fileName);
-        // 如果当前是仅进度服务器，且有配置远端服务器，则从远端获取内容
+        
+        // 判断是否为 EPUB 文件
+        if (isEpubFile(fileName)) {
+            EPUB_LOADER.reset();
+            EPUB_LOADER.isEpub = true;
+            
+            // 清空内容区
+            const contentDiv = document.getElementById('content');
+            contentDiv.innerHTML = '';
+            
+            try {
+                // 1. 先获取 EPUB 信息
+                const infoUrl = SERVER_CONFIG.progressOnly && SERVER_CONFIG.remoteServerUrl 
+                    ? `${SERVER_CONFIG.remoteServerUrl}/epub-info?name=` + encodeURIComponent(fileName)
+                    : '/epub-info?name=' + encodeURIComponent(fileName);
+                
+                const infoResponse = await fetch(infoUrl);
+                if (!infoResponse.ok) throw new Error('获取 EPUB 信息失败');
+                
+                const info = await infoResponse.json();
+                EPUB_LOADER.totalParagraphs = info.totalParagraphs;
+                EPUB_LOADER.chapterMap = info.chapters;
+                
+                console.log('EPUB 信息:', info);
+                
+                // 2. 尝试从服务器获取阅读进度
+                let startParagraph = 0;
+                try {
+                    const progressUrl = SERVER_CONFIG.progressOnly && SERVER_CONFIG.remoteServerUrl 
+                        ? `${SERVER_CONFIG.remoteServerUrl}/get-progress?name=` + encodeURIComponent(fileName)
+                        : '/get-progress?name=' + encodeURIComponent(fileName);
+                    
+                    const progressResponse = await fetch(progressUrl);
+                    if (progressResponse.ok) {
+                        const progressData = await progressResponse.json();
+                        if (progressData.progress !== null && progressData.progress > 0) {
+                            // 段落进度就是段落索引
+                            startParagraph = Math.max(0, progressData.progress - 10); // 稍微往前一点
+                            console.log('从进度恢复，起始段落:', startParagraph);
+                        }
+                    }
+                } catch (e) {
+                    console.log('获取进度失败，从开头开始');
+                }
+                
+                // 3. 优先加载当前位置附近的内容（向后）
+                EPUB_LOADER.pendingStartParagraph = startParagraph;
+                await loadEpubRange(startParagraph, true, 'forward');
+                
+                // 4. 同时向前加载一批（确保向上翻也能看到内容）
+                const prevStart = Math.max(0, startParagraph - EPUB_LOADER.batchSize);
+                if (prevStart < startParagraph) {
+                    loadEpubRange(prevStart, false, 'backward');
+                }
+                
+                // 5. 滚动到目标段落
+                setTimeout(() => {
+                    const targetP = document.getElementById(String(startParagraph));
+                    if (targetP) {
+                        targetP.scrollIntoView({ behavior: 'auto', block: 'center' });
+                    }
+                    checkAndSendMiddlePIndex();
+                }, 300);
+                
+                // 6. 继续预加载后续内容
+                const nextStart = EPUB_LOADER.getNextLoadStartForward();
+                if (nextStart >= 0) {
+                    loadEpubRange(nextStart, false, 'forward');
+                }
+                
+            } catch (error) {
+                console.error('EPUB 分段加载失败:', error);
+                // 失败时回退到旧接口
+                fetchEpubFallback(fileName);
+            }
+        } else {
+            // 普通文件使用旧方式加载
+            fetchRegularFile(fileName);
+        }
+    }
+    
+    // 普通文件加载（txt/md）
+    function fetchRegularFile(fileName) {
         const contentUrl = SERVER_CONFIG.progressOnly && SERVER_CONFIG.remoteServerUrl 
             ? `${SERVER_CONFIG.remoteServerUrl}/file-content?name=` + encodeURIComponent(fileName)
             : '/file-content?name=' + encodeURIComponent(fileName);
@@ -377,6 +810,27 @@
             .catch(error => {
                 console.error('获取文件内容出错：', error);
                 alert('无法获取文件内容，请检查控制台以获取更多信息。');
+            });
+    }
+    
+    // EPUB 加载失败回退
+    function fetchEpubFallback(fileName) {
+        console.log('使用回退方式加载 EPUB');
+        const contentUrl = SERVER_CONFIG.progressOnly && SERVER_CONFIG.remoteServerUrl 
+            ? `${SERVER_CONFIG.remoteServerUrl}/file-content?name=` + encodeURIComponent(fileName)
+            : '/file-content?name=' + encodeURIComponent(fileName);
+        fetch(contentUrl)
+            .then(response => response.text())
+            .then(text => {
+                const contentDiv = document.getElementById('content');
+                contentDiv.setAttribute('data-original-text', text);
+                const processedText = preprocessText(text);
+                parseMarkdownToHtml(processedText);
+                checkAndSendMiddlePIndex();
+            })
+            .catch(error => {
+                console.error('回退加载也失败了:', error);
+                alert('无法加载 EPUB 文件');
             });
     }
 
@@ -466,9 +920,24 @@
     // 分页功能 - 按行数计算
     function paginateContent() {
         const contentDiv = document.getElementById('content');
-        const elements = Array.from(contentDiv.children);
+        const elements = Array.from(contentDiv.children).filter(el => {
+            // 过滤掉空元素和脚本
+            if (el.tagName === 'SCRIPT') return false;
+            if (el.textContent.trim() === '') return false;
+            return true;
+        });
         
         if (elements.length === 0) return;
+        
+        // EPUB 模式下，如果内容还很少，提示用户
+        if (EPUB_LOADER.isEpub && elements.length < 10 && EPUB_LOADER.loadedRanges.length > 0) {
+            const lastRange = EPUB_LOADER.loadedRanges[EPUB_LOADER.loadedRanges.length - 1];
+            if (lastRange.end < EPUB_LOADER.totalParagraphs - 1) {
+                console.log('EPUB 内容加载中，稍后进行分页');
+                // 等待更多内容加载后再分页
+                setTimeout(() => paginateContent(), 500);
+            }
+        }
         
         // 获取样式参数
         const computedStyle = window.getComputedStyle(contentDiv);
@@ -610,11 +1079,14 @@
             contentDiv.classList.remove('paginated');
             pageControls.style.display = 'none';
             
-            // 重新渲染原始内容
-            const text = contentDiv.getAttribute('data-original-text') || '';
-            if (text) {
-                const processedText = preprocessText(text);
-                parseMarkdownToHtmlSimple(processedText);
+            // EPUB 模式下不需要重新渲染，直接显示已加载的内容
+            if (!EPUB_LOADER.isEpub) {
+                // 重新渲染原始内容
+                const text = contentDiv.getAttribute('data-original-text') || '';
+                if (text) {
+                    const processedText = preprocessText(text);
+                    parseMarkdownToHtmlSimple(processedText);
+                }
             }
         }
     }
@@ -707,7 +1179,13 @@
             return;
         }
         
-        const middlePIndex = getMiddlePIndex();
+        // EPUB 模式下使用段落索引
+        let middlePIndex;
+        if (EPUB_LOADER.isEpub) {
+            middlePIndex = getMiddleParagraphIndex();
+        } else {
+            middlePIndex = getMiddlePIndex();
+        }
 
         if (middlePIndex === null) return; // 如果没有p元素，则不发送请求
 
@@ -765,7 +1243,8 @@
             return;
         }
         
-        const middlePIndex = getMiddlePIndex();
+        // EPUB 模式下使用段落索引
+        const middlePIndex = EPUB_LOADER.isEpub ? getMiddleParagraphIndex() : getMiddlePIndex();
 
         if (middlePIndex === null) return; // 如果没有p元素，则不发送请求
 

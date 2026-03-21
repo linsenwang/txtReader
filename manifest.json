@@ -3,6 +3,7 @@
   "short_name": "txtReader",
   "description": "简洁优雅的本地文本阅读器，支持 Markdown 渲染和阅读进度同步",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
   "background_color": "#ffffff",
   "theme_color": "#fff",
@@ -17,5 +18,6 @@
   ],
   "categories": ["books", "productivity"],
   "lang": "zh-CN",
-  "dir": "ltr"
+  "dir": "ltr",
+  "prefer_related_applications": false
 }

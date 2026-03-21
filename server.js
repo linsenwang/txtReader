@@ -465,12 +465,12 @@ app.get('/server-config', (req, res) => {
     });
 });
 
-// 启动服务器
+// 启动 HTTP 服务器
 const PORT = process.env.PORT || 3000;
 const HOST = process.env.HOST || 'localhost';
 
 app.listen(PORT, HOST, () => {
-    console.log(`服务器已启动：http://${HOST}:${PORT}`);
+    console.log(`HTTP 服务器已启动：http://${HOST}:${PORT}`);
     if (PROGRESS_ONLY) {
         console.log('模式：仅进度服务器（不提供内容服务）');
     } else {
@@ -480,3 +480,35 @@ app.listen(PORT, HOST, () => {
         console.log(`远端进度服务器：${REMOTE_SERVER_URL}`);
     }
 });
+
+// 启动 HTTPS 服务器（用于 iOS PWA）
+const https = require('https');
+const HTTPS_PORT = process.env.HTTPS_PORT || 3443;
+
+function findCertFiles() {
+    const files = fs.readdirSync(__dirname);
+    const certFile = files.find(f => f.match(/\d+\.\d+\.\d+\.\d+/) && f.endsWith('.pem') && !f.includes('-key'));
+    const keyFile = files.find(f => f.match(/\d+\.\d+\.\d+\.\d+/) && f.endsWith('-key.pem'));
+    
+    if (certFile && keyFile) {
+        return {
+            cert: path.join(__dirname, certFile),
+            key: path.join(__dirname, keyFile)
+        };
+    }
+    return null;
+}
+
+const certs = findCertFiles();
+if (certs) {
+    const httpsOptions = {
+        cert: fs.readFileSync(certs.cert),
+        key: fs.readFileSync(certs.key)
+    };
+    
+    https.createServer(httpsOptions, app).listen(HTTPS_PORT, HOST, () => {
+        console.log(`HTTPS 服务器已启动：https://${HOST}:${HTTPS_PORT} (iOS PWA 专用)`);
+    });
+} else {
+    console.log('未找到 HTTPS 证书，跳过 HTTPS 服务器启动');
+}

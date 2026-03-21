@@ -3,7 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <title>txtReader</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.13.11/dist/katex.min.css">
+    <!-- 内联 KaTeX 样式，避免外部依赖 -->
+    <style>
+        /* KaTeX 最小化样式 */
+        .katex { font: normal 1.21em KaTeX_Main, Times New Roman, serif; line-height: 1.2; }
+        .katex-display { display: block; margin: 1em 0; }
+    </style>
     <link rel="icon" type="image/x-icon" href="web_icon/yanan.png" />
     <link rel="stylesheet" type="text/css" href="afdian_styles.css">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
@@ -25,19 +30,11 @@
         }
         
         body {
-            font-family: 'SarasaMonoSC', Arial, sans-serif;
+            font-family: 'SarasaMonoSC', 'Menlo', 'Courier New', monospace;
             margin: auto;
             padding: 0;
         }
 
-        /* for yanan */
-        /* .folder_icon {
-            height: 1em;
-            width: 1em;
-            margin: -0.15em 0.5em;
-        } */
-
-        /* for folder */
         .folder_icon {
             height: 1.2em;
             width: 1.2em;
@@ -59,11 +56,11 @@
             margin: 10px 0;
             padding: 10px;
             display: flex;
-            flex-direction: column; /* 垂直排列内容 */
-            align-items: center; /* 确保子内容在容器中居中 */
-            justify-content: center; /* 垂直方向也居中 */
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
             border-radius: 6px;
-            text-align: center; /* 让文本水平居中 */
+            text-align: center;
         }
 
         .file-list a {
@@ -71,28 +68,27 @@
             color: #000;
             font-size: 16px;
             font-weight: bold;
-            word-wrap: break-word; /* 自动换行 */
+            word-wrap: break-word;
             overflow-wrap: break-word;
-            max-width: 100%; /* 限制宽度，确保适应容器 */
-            margin-bottom: 5px; /* 添加与时间的间距 */
-            display: block; /* 使链接单独占据一行并居中 */
+            max-width: 100%;
+            margin-bottom: 5px;
+            display: block;
         }
 
         .file-list a:hover {
-            /* text-decoration: underline; */
             text-decoration: none;
-            color: #0056b3; /* 深色悬停效果 */
+            color: #0056b3;
         }
 
         .file-list a:visited {
-        color: #888; /* 设置访问过的链接为紫色 */
+            color: #888;
         }
 
         .file-list .mtime {
             font-size: 12px;
-            color: #555; /* 灰色时间字体 */
-            white-space: nowrap; /* 避免时间内容换行 */
-            display: block; /* 确保时间单独占据一行并居中 */
+            color: #555;
+            white-space: nowrap;
+            display: block;
         }
 
         #toggleFoldersOnly {
@@ -108,32 +104,58 @@
             cursor: pointer;
         }
 
-
-    @media (prefers-color-scheme: dark) {
-        .file-list a {
-            color: #fff;
+        /* iOS PWA 安装提示 */
+        #ios-install-hint {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #007BFF;
+            color: white;
+            padding: 15px 20px;
+            border-radius: 12px;
+            z-index: 99999;
+            text-align: center;
+            max-width: 90%;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            animation: slideUp 0.3s ease-out;
+        }
+        
+        @keyframes slideUp {
+            from { transform: translateX(-50%) translateY(100%); opacity: 0; }
+            to { transform: translateX(-50%) translateY(0); opacity: 1; }
+        }
+        
+        #ios-install-hint .close-btn {
+            position: absolute;
+            top: 5px;
+            right: 10px;
+            background: none;
+            border: none;
+            color: white;
+            font-size: 18px;
+            cursor: pointer;
         }
 
-        .file-list .mtime {
-            color: #aaa;
+        @media (prefers-color-scheme: dark) {
+            .file-list a { color: #fff; }
+            .file-list .mtime { color: #aaa; }
+            .file-list a:hover { color: #3388cc; }
         }
-
-        .file-list a:hover {
-            /* text-decoration: underline; */
-            text-decoration: none;
-            color: #3388cc; /* 深色悬停效果 */
+        
+        /* PWA 模式下的特殊样式 */
+        @media all and (display-mode: standalone) {
+            body {
+                padding-top: env(safe-area-inset-top);
+                padding-bottom: env(safe-area-inset-bottom);
+            }
         }
-    }
     </style>
 </head>
 <body>
     <button id="toggleFoldersOnly"><img src="web_icon/folder.svg" class='folder_icon'></button>
-    <!-- 文件列表 -->
-    <div class="file-list" id="fileList">
-        <!-- 文件列表将插入在这里 -->
-    </div>
+    <div class="file-list" id="fileList"></div>
 
-    <!-- 引入必要的库 -->
     <script>
         document.addEventListener('keydown', (event) => {
             if (event.shiftKey && event.metaKey && event.code === 'KeyO') {
@@ -141,13 +163,11 @@
             }
         });
 
-        // 服务器配置
         const SERVER_CONFIG = {
             progressOnly: false,
             remoteServerUrl: ''
         };
 
-        // 获取服务器配置
         async function loadServerConfig() {
             try {
                 const response = await fetch('/server-config');
@@ -158,15 +178,13 @@
                     console.log('服务器配置:', SERVER_CONFIG);
                 }
             } catch (error) {
-                console.log('获取服务器配置失败，使用默认配置:', error);
+                console.log('获取服务器配置失败:', error);
             }
         }
 
         document.addEventListener('DOMContentLoaded', async function() {
-            // 先获取服务器配置
             await loadServerConfig();
 
-            // 如果是仅进度服务器模式，显示提示
             if (SERVER_CONFIG.progressOnly) {
                 const fileListDiv = document.getElementById('fileList');
                 fileListDiv.innerHTML = `
@@ -181,33 +199,41 @@
                 return;
             }
 
-            // 获取文件列表并显示
             const urlParams = new URLSearchParams(window.location.search);
-            const dir = urlParams.get('dir') || ''; // 获取 `dir` 参数，如果不存在则为空字符串
+            const dir = urlParams.get('dir') || '';
             document.title = dir || 'txtReader';
-            // fetch('/list-files')
-            console.log('请求的文件夹：', dir); // 调试信息
+            console.log('请求的文件夹：', dir);
 
             fetch(`/list-files?dir=${encodeURIComponent(dir)}`)
                 .then(response => response.json())
                 .then(files => {
-                    console.log('接收到的文件列表：', files); // 调试信息
+                    console.log('接收到的文件列表：', files);
                     const fileListDiv = document.getElementById('fileList');
+                    
+                    // 离线且没有缓存时显示提示
+                    if (files.length === 0 && !navigator.onLine) {
+                        fileListDiv.innerHTML = `
+                            <div style="text-align: center; padding: 50px; color: #666;">
+                                <p>📡 离线模式</p>
+                                <p style="font-size: 14px;">请连接 WiFi 以获取文件列表</p>
+                                <p style="font-size: 12px; margin-top: 20px; color: #999;">
+                                    提示：在线时打开过的文件会缓存，离线时可继续阅读
+                                </p>
+                            </div>
+                        `;
+                        return;
+                    }
+                    
                     let htmlContent = '<ul>';
                     files.forEach(file => {
                         const fileName = file.name;
                         const moFileName = file.name.replace(/_/g, ' ').replace(/--/g, ' ').replace(/\.txt$/g, '').replace(/\.md$/g, '').replace(/\.epub$/i, '').replace(/——/g, ' ');
-                        const mtime = new Date(file.mtime).toLocaleString().replace(/,/g, ' '); // 格式化日期
-                        // 创建包含文件名和修改时间的列表项
-                        // htmlContent += `<li><a href="file.html?name=${encodeURIComponent(fileName)}">${moFileName}</a><span class="mtime">${mtime}</span></li>`;
+                        const mtime = new Date(file.mtime).toLocaleString().replace(/,/g, ' ');
                         if (fileName.toLowerCase().endsWith('.epub')) {
-                            // 如果是 EPUB 文件，显示 EPUB 图标
                             htmlContent += `<li class="file epub"><a href="file.html?name=${dir && dir !== '' ? encodeURIComponent(dir) + '/' : ''}${encodeURIComponent(fileName)}"><img src="web_icon/epub.svg" class='folder_icon'>${moFileName}</a><span class="mtime">${mtime}</span></li>`;
                         } else if (fileName.endsWith('.txt') || fileName.endsWith('.md')) {
-                            // 如果是 txt/md 文件，显示文件名称和修改时间
                             htmlContent += `<li class="file"><a href="file.html?name=${dir && dir !== '' ? encodeURIComponent(dir) + '/' : ''}${encodeURIComponent(fileName)}">${moFileName}</a><span class="mtime">${mtime}</span></li>`;
                         } else {
-                            // 如果是文件夹，显示文件夹名称并添加链接到文件夹页面
                             htmlContent += `<li class="folder"><a href="index.html?dir=${encodeURIComponent(fileName)}"><img src="web_icon/folder.svg" class='folder_icon'>${moFileName}</a><span class="mtime">${mtime}</span></li>`;
                         }
                     });
@@ -219,62 +245,66 @@
                 });
         });
 
-    const button = document.getElementById('toggleFoldersOnly');
-    let foldersOnly = false;
+        const button = document.getElementById('toggleFoldersOnly');
+        let foldersOnly = false;
 
-    function toggleFoldersOnly() {
-        foldersOnly = !foldersOnly;
-        const files = document.querySelectorAll('li.file');
-        const folders = document.querySelectorAll('li.folder');
-        const epubs = document.querySelectorAll('li.file.epub');
-        
-        if (foldersOnly) {
-            // 只显示文件夹和 EPUB 文件，隐藏纯文本文件
-            files.forEach(file => {
-                if (file.classList.contains('epub')) {
-                    file.style.display = '';
-                } else {
-                    file.style.display = 'none';
-                }
-            });
-            folders.forEach(folder => {
-                folder.style.display = '';
-            });
-        } else {
-            // 显示所有
-            files.forEach(file => {
-                file.style.display = '';
-            });
-            folders.forEach(folder => {
-                folder.style.display = '';
-            });
+        function toggleFoldersOnly() {
+            foldersOnly = !foldersOnly;
+            const files = document.querySelectorAll('li.file');
+            const folders = document.querySelectorAll('li.folder');
+            const epubs = document.querySelectorAll('li.file.epub');
+            
+            if (foldersOnly) {
+                files.forEach(file => {
+                    if (file.classList.contains('epub')) {
+                        file.style.display = '';
+                    } else {
+                        file.style.display = 'none';
+                    }
+                });
+                folders.forEach(folder => folder.style.display = '');
+            } else {
+                files.forEach(file => file.style.display = '');
+                folders.forEach(folder => folder.style.display = '');
+            }
         }
-    }
 
-    button.addEventListener('click', () => {
-        toggleFoldersOnly();
-    });
+        button.addEventListener('click', toggleFoldersOnly);
 
-    document.addEventListener('keydown', function(event) {
-        // Check if Shift + Command (Meta) + S is pressed
-        if (event.shiftKey && event.metaKey && event.key.toLowerCase() === 'f') {
-            event.preventDefault();
-            toggleFoldersOnly();
-        }
-    });
-
-
+        document.addEventListener('keydown', function(event) {
+            if (event.shiftKey && event.metaKey && event.key.toLowerCase() === 'f') {
+                event.preventDefault();
+                toggleFoldersOnly();
+            }
+        });
     </script>
+    
     <script>
-        // 注册 Service Worker
+        // 注册 Service Worker - iOS 优化版
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
-                navigator.serviceWorker.register('/service-worker.js')
+                navigator.serviceWorker.register('/service-worker-ios.js')
                     .then((registration) => {
-                        console.log('Service Worker 注册成功:', registration.scope);
+                        console.log('[SW] 注册成功:', registration.scope);
+                        
+                        // iOS 关键：首次安装后刷新页面
+                        if (registration.installing) {
+                            console.log('[SW] 正在安装...');
+                            registration.installing.addEventListener('statechange', (e) => {
+                                if (e.target.state === 'activated') {
+                                    console.log('[SW] 已激活');
+                                    // 首次安装后刷新，让 SW 控制页面
+                                    if (!localStorage.getItem('sw_installed')) {
+                                        localStorage.setItem('sw_installed', 'true');
+                                        console.log('[SW] 首次安装，刷新页面');
+                                        window.location.reload();
+                                    }
+                                }
+                            });
+                        }
                     })
                     .catch((error) => {
-                        console.log('Service Worker 注册失败:', error);
+                        console.error('[SW] 注册失败:', error);
                     });
             });
         }

@@ -3,9 +3,27 @@
 <head>
     <meta charset="UTF-8">
     <title>txtReader</title>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.13.11/katex.min.css">
+    <style>
+        /* KaTeX 基础样式内联 */
+        .katex { font: normal 1.21em KaTeX_Main, Times New Roman, serif; line-height: 1.2; text-indent: 0; }
+        .katex-display { display: block; margin: 1em 0; text-align: center; }
+        .katex .base { position: relative; display: inline-block; white-space: nowrap; }
+        .katex .mord { display: inline-block; }
+        .katex .mord.mathit { font-style: italic; }
+        .katex .mbin { display: inline-block; padding: 0 0.2222em; }
+        .katex .mrel { display: inline-block; padding: 0 0.2778em; }
+        .katex .mopen, .katex .mclose { display: inline-block; }
+        .katex .mfrac { display: inline-block; text-align: center; }
+        .katex .mfrac > span { display: block; }
+        .katex .mfrac .frac-line { width: 100%; border-bottom: 1px solid; }
+        .katex .msupsub { display: inline-block; font-size: 0.7em; vertical-align: sub; }
+        .katex .msup { display: inline-block; font-size: 0.7em; vertical-align: super; }
+        .katex .underline { border-bottom: 1px solid; }
+        .katex .overline { border-top: 1px solid; }
+    </style>
     <link rel="icon" type="image/x-icon" href="web_icon/yanan.png" />
     <link rel="stylesheet" type="text/css" href="afdian_styles.css">
+    
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <meta name="theme-color" content="#fff" media="(prefers-color-scheme: light)">
     <meta name="theme-color" content="#1F2020" media="(prefers-color-scheme: dark)">
@@ -363,6 +381,14 @@
         }
     });
 
+    // 监听网络状态，自动同步
+    window.addEventListener('online', () => {
+        console.log('[Network] 已连接 WiFi，开始同步...');
+        if (window.progressSync) {
+            window.progressSync.syncAll();
+        }
+    });
+
     document.addEventListener('DOMContentLoaded', function() {
         const urlParams = new URLSearchParams(window.location.search);
         fileName = urlParams.get('name');
@@ -697,8 +723,23 @@
         }, 200);
     });
 
-    async function fetchFileContent(fileName) {
+    function fetchFileContent(fileName) {
         console.log('请求文件内容：', fileName);
+        
+        // 1. 立即从 localStorage 获取进度（不会卡住）
+        let localProgress = null;
+        try {
+            const saved = localStorage.getItem(`progress_${fileName}`);
+            if (saved) {
+                const parsed = JSON.parse(saved);
+                if (parsed.progress !== undefined) {
+                    localProgress = parsed.progress;
+                    console.log('从 localStorage 获取进度:', localProgress);
+                }
+            }
+        } catch (e) {
+            console.error('读取 localStorage 失败:', e);
+        }
         
         // 判断是否为 EPUB 文件
         if (isEpubFile(fileName)) {
@@ -709,6 +750,30 @@
             const contentDiv = document.getElementById('content');
             contentDiv.innerHTML = '';
             
+            // 使用本地进度开始加载
+            let startParagraph = 0;
+            if (localProgress !== null && localProgress > 0) {
+                startParagraph = Math.max(0, localProgress - 10);
+                console.log('从本地进度恢复，起始段落:', startParagraph);
+            }
+            
+            // 后台获取服务器最优进度
+            if (navigator.onLine && window.progressSync) {
+                const serverUrl = SERVER_CONFIG.progressOnly && SERVER_CONFIG.remoteServerUrl 
+                    ? SERVER_CONFIG.remoteServerUrl 
+                    : '';
+                window.progressSync.getBestProgress(fileName, serverUrl).then(bestProgress => {
+                    if (bestProgress !== null && bestProgress !== localProgress) {
+                        console.log('服务器进度不同，跳转到:', bestProgress);
+                        const targetP = document.getElementById(String(bestProgress));
+                        if (targetP) {
+                            targetP.scrollIntoView({ behavior: 'auto', block: 'center' });
+                        }
+                    }
+                }).catch(() => {});
+            }
+            
+            (async () => {
             try {
                 // 1. 先获取 EPUB 信息
                 const infoUrl = SERVER_CONFIG.progressOnly && SERVER_CONFIG.remoteServerUrl 
@@ -723,26 +788,6 @@
                 EPUB_LOADER.chapterMap = info.chapters;
                 
                 console.log('EPUB 信息:', info);
-                
-                // 2. 尝试从服务器获取阅读进度
-                let startParagraph = 0;
-                try {
-                    const progressUrl = SERVER_CONFIG.progressOnly && SERVER_CONFIG.remoteServerUrl 
-                        ? `${SERVER_CONFIG.remoteServerUrl}/get-progress?name=` + encodeURIComponent(fileName)
-                        : '/get-progress?name=' + encodeURIComponent(fileName);
-                    
-                    const progressResponse = await fetch(progressUrl);
-                    if (progressResponse.ok) {
-                        const progressData = await progressResponse.json();
-                        if (progressData.progress !== null && progressData.progress > 0) {
-                            // 段落进度就是段落索引
-                            startParagraph = Math.max(0, progressData.progress - 10); // 稍微往前一点
-                            console.log('从进度恢复，起始段落:', startParagraph);
-                        }
-                    }
-                } catch (e) {
-                    console.log('获取进度失败，从开头开始');
-                }
                 
                 // 3. 优先加载当前位置附近的内容（向后）
                 EPUB_LOADER.pendingStartParagraph = startParagraph;
@@ -774,6 +819,7 @@
                 // 失败时回退到旧接口
                 fetchEpubFallback(fileName);
             }
+            })(); // async IIFE 结束
         } else {
             // 普通文件使用旧方式加载
             fetchRegularFile(fileName);
@@ -785,6 +831,23 @@
         const contentUrl = SERVER_CONFIG.progressOnly && SERVER_CONFIG.remoteServerUrl 
             ? `${SERVER_CONFIG.remoteServerUrl}/file-content?name=` + encodeURIComponent(fileName)
             : '/file-content?name=' + encodeURIComponent(fileName);
+        
+        // 1. 立即从 localStorage 获取进度（不会卡住）
+        let localProgress = null;
+        try {
+            const saved = localStorage.getItem(`progress_${fileName}`);
+            if (saved) {
+                const parsed = JSON.parse(saved);
+                if (parsed.progress !== undefined) {
+                    localProgress = parsed.progress;
+                    console.log('从 localStorage 获取进度:', localProgress);
+                }
+            }
+        } catch (e) {
+            console.error('读取 localStorage 失败:', e);
+        }
+        
+        // 2. 加载文章内容
         fetch(contentUrl)
             .then(response => {
                 console.log('响应状态：', response.status);
@@ -805,11 +868,42 @@
 
                 console.log('开始渲染内容');
                 parseMarkdownToHtml(processedText);
+                
+                // 3. 先恢复本地保存的位置
+                if (localProgress && !isPaginated) {
+                    setTimeout(() => {
+                        const targetElement = document.getElementById(String(localProgress));
+                        if (targetElement) {
+                            console.log('恢复到本地段落:', localProgress);
+                            targetElement.scrollIntoView({ behavior: 'auto', block: 'center' });
+                        }
+                        firstLoad = false;
+                    }, 300);
+                }
+                
+                // 4. 后台获取服务器进度，如果不同再跳转
+                if (navigator.onLine && window.progressSync) {
+                    const serverUrl = SERVER_CONFIG.progressOnly && SERVER_CONFIG.remoteServerUrl 
+                        ? SERVER_CONFIG.remoteServerUrl 
+                        : '';
+                    window.progressSync.getBestProgress(fileName, serverUrl).then(bestProgress => {
+                        if (bestProgress !== null && bestProgress !== localProgress) {
+                            console.log('服务器进度不同，跳转到:', bestProgress);
+                            const targetElement = document.getElementById(String(bestProgress));
+                            if (targetElement) {
+                                targetElement.scrollIntoView({ behavior: 'auto', block: 'center' });
+                            }
+                        }
+                    }).catch(err => {
+                        console.log('获取服务器进度失败:', err);
+                    });
+                }
+                
                 checkAndSendMiddlePIndex();
             })
             .catch(error => {
                 console.error('获取文件内容出错：', error);
-                alert('无法获取文件内容，请检查控制台以获取更多信息。');
+                alert('无法获取文件内容，请检查文件是否已缓存。');
             });
     }
     
@@ -1141,32 +1235,38 @@
     }
 
     // -------------------------------------------------------------
-    // 以下是您用于记录阅读位置的代码，保持不变
+    // 阅读位置记录（集成离线缓存和自动同步）
     // -------------------------------------------------------------
     import { getMiddlePIndex } from './recLoc.js';
+    import './progress-sync.js';
 
     let firstLoad = true;
 
-    // 从服务器获取阅读进度
-    async function fetchReadingProgress() {
+    // 快速获取本地阅读进度（不等待服务器）
+    function fetchReadingProgress() {
         try {
-            // 优先从本地获取，如果本地没有或本地是仅进度服务器且有远端配置，则从远端获取
-            const progressUrl = SERVER_CONFIG.progressOnly && SERVER_CONFIG.remoteServerUrl
-                ? `${SERVER_CONFIG.remoteServerUrl}/get-progress?name=` + encodeURIComponent(fileName)
-                : '/get-progress?name=' + encodeURIComponent(fileName);
-            
-            const response = await fetch(progressUrl);
-            if (response.ok) {
-                const data = await response.json();
-                console.log('获取到的阅读进度:', data);
-                if (data.progress !== null && data.progress !== undefined) {
-                    return data.progress;
+            const saved = localStorage.getItem(`progress_${fileName}`);
+            if (saved) {
+                const parsed = JSON.parse(saved);
+                if (parsed.progress !== undefined) {
+                    console.log('从 localStorage 获取进度:', parsed.progress);
+                    return parsed.progress;
                 }
             }
-        } catch (error) {
-            console.error('获取阅读进度失败:', error);
+        } catch (e) {
+            console.error('读取 localStorage 失败:', e);
         }
         return null;
+    }
+
+    async function saveProgressToSync(progress) {
+        const serverUrl = SERVER_CONFIG.progressOnly && SERVER_CONFIG.remoteServerUrl 
+            ? SERVER_CONFIG.remoteServerUrl 
+            : '';
+        
+        if (window.progressSync) {
+            await window.progressSync.saveProgress(fileName, progress, serverUrl);
+        }
     }
 
     function checkAndSendMiddlePIndex() {
@@ -1191,36 +1291,20 @@
 
         console.log(fileName, "当前中间的 p 是第", middlePIndex, "个");
 
-        // 发送进度到当前服务器（保存进度）
-        fetch('/log-middle-p-index', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                fileName: fileName,
-                middlePIndex: middlePIndex
-            })
-        })
-        .then(response => response.json())
-        .then(async data => {
-            console.log('服务器响应:', data);
+        // 使用 ProgressSync 保存（支持离线缓存和自动同步）
+        saveProgressToSync(middlePIndex);
 
-            if (firstLoad) {
-                firstLoad = false;
-                // 优先使用从 /get-progress 获取的进度，如果没有则使用当前响应中的值
-                const savedProgress = await fetchReadingProgress();
-                const targetIndex = savedProgress !== null ? savedProgress : data.maxValue;
-                
-                if (targetIndex) {
-                    const targetElement = document.getElementById(targetIndex);
-                    if (targetElement) {
-                        targetElement.scrollIntoView({ behavior: 'auto', block: 'center' });
-                    }
+        // 首次加载时恢复阅读位置
+        if (firstLoad) {
+            firstLoad = false;
+            const savedProgress = fetchReadingProgress();
+            if (savedProgress) {
+                const targetElement = document.getElementById(savedProgress);
+                if (targetElement) {
+                    targetElement.scrollIntoView({ behavior: 'auto', block: 'center' });
                 }
             }
-        })
-        .catch(error => console.error('发送数据失败:', error));
+        }
     }
 
     // 页面加载后等待DOM渲染完成再执行首次检查
@@ -1235,7 +1319,7 @@
     // 每 3 秒执行一次
     setInterval(checkAndSendMiddlePIndex, 3000);
 
-    function forceUpdateMiddlePIndex() {
+    async function forceUpdateMiddlePIndex() {
         // 翻页模式下保存页码
         if (isPaginated) {
             savePaginatedProgress();
@@ -1246,27 +1330,37 @@
         // EPUB 模式下使用段落索引
         const middlePIndex = EPUB_LOADER.isEpub ? getMiddleParagraphIndex() : getMiddlePIndex();
 
-        if (middlePIndex === null) return; // 如果没有p元素，则不发送请求
+        if (middlePIndex === null) return;
 
         console.log(fileName, "强制更新中间的 p 是第", middlePIndex, "个");
 
-        fetch('/log-middle-p-index', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                fileName: fileName,
-                middlePIndex: middlePIndex,
-                force: true
+        // 使用 ProgressSync 强制同步
+        if (window.progressSync) {
+            const serverUrl = SERVER_CONFIG.progressOnly && SERVER_CONFIG.remoteServerUrl 
+                ? SERVER_CONFIG.remoteServerUrl 
+                : '';
+            
+            // 先保存到本地
+            await window.progressSync.saveProgress(fileName, middlePIndex, serverUrl);
+            
+            // 强制立即同步到服务器
+            if (navigator.onLine) {
+                const synced = await window.progressSync.syncAll();
+                showToast(navigator.onLine ? '位置已更新并同步' : '位置已缓存，联网后自动同步');
+            } else {
+                showToast('离线状态，位置已缓存');
+            }
+        } else {
+            // 回退到原来的方式
+            fetch('/log-middle-p-index', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ fileName, middlePIndex, force: true })
             })
-        })
-        .then(response => response.json())
-        .then(data => {
-            console.log('服务器响应:', data);
-            showToast('位置已更新');
-        })
-        .catch(error => console.error('发送数据失败:', error));
+            .then(response => response.json())
+            .then(() => showToast('位置已更新'))
+            .catch(() => showToast('更新失败'));
+        }
     }
 
     document.getElementById('forceUpdateButton').addEventListener('click', forceUpdateMiddlePIndex);
@@ -1294,5 +1388,42 @@
 </script>
     
     
+    <script>
+        // 注册 Service Worker - iOS 优化版
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/service-worker-ios.js')
+                    .then((registration) => {
+                        console.log('[SW] 注册成功:', registration.scope);
+                        
+                        // 关键：如果 SW 正在安装，等待安装完成后刷新页面
+                        if (registration.installing) {
+                            console.log('[SW] 正在安装，等待完成...');
+                            registration.installing.addEventListener('statechange', (e) => {
+                                if (e.target.state === 'activated') {
+                                    console.log('[SW] 已激活，刷新页面以应用');
+                                    // 可选：自动刷新一次确保 SW 控制页面
+                                    // window.location.reload();
+                                }
+                            });
+                        }
+                        
+                        // 检查是否有新的 SW 等待
+                        if (registration.waiting) {
+                            console.log('[SW] 有新的 SW 等待激活');
+                            registration.waiting.postMessage('skipWaiting');
+                        }
+                    })
+                    .catch((error) => {
+                        console.error('[SW] 注册失败:', error);
+                    });
+                
+                // 监听 controller 变化
+                navigator.serviceWorker.addEventListener('controllerchange', () => {
+                    console.log('[SW] Controller 已改变');
+                });
+            });
+        }
+    </script>
 </body>
 </html>

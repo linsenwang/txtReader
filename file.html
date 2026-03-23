@@ -936,10 +936,10 @@
             ]
         });
         
-        // 渲染完成后，如果是翻页模式则进行分页
+        // 渲染完成后，如果是翻页模式则进行分页（带进度恢复）
         if (isPaginated) {
             setTimeout(() => {
-                paginateContent();
+                initPaginatedMode();
             }, 100);
         }
     }
@@ -1052,7 +1052,8 @@
     }
     
     // 分页功能 - 基于等宽字体行数计算
-    function paginateContent() {
+    // targetParagraphIndex: 要跳转到的段落索引（null表示不跳转）
+    function paginateContent(targetParagraphIndex = null) {
         const contentDiv = document.getElementById('content');
         const originalElements = Array.from(contentDiv.children).filter(el => {
             if (el.tagName === 'SCRIPT') return false;
@@ -1067,7 +1068,7 @@
             const lastRange = EPUB_LOADER.loadedRanges[EPUB_LOADER.loadedRanges.length - 1];
             if (lastRange.end < EPUB_LOADER.totalParagraphs - 1) {
                 console.log('EPUB 内容加载中，稍后进行分页');
-                setTimeout(() => paginateContent(), 500);
+                setTimeout(() => paginateContent(targetParagraphIndex), 500);
                 return;
             }
         }
@@ -1080,7 +1081,7 @@
         
         // 计算每页可用行数（留出一些余量，避免溢出）
         const pageHeight = window.innerHeight - 80;
-        const linesPerPage = Math.max(5, Math.floor(pageHeight / lineHeight) - 4); // 减4行作为安全边距
+        const linesPerPage = Math.max(5, Math.floor(pageHeight / lineHeight) - 4);
         
         console.log('分页参数:', { pageHeight, lineHeight, linesPerPage, charsPerLine });
         
@@ -1104,47 +1105,37 @@
         for (let i = 0; i < elementsToPaginate.length; i++) {
             const { el, tagName, text } = elementsToPaginate[i];
             
-            // 计算元素需要的行数
             let elementLines = 0;
             
             if (tagName === 'p') {
                 elementLines = calculateTextLines(text, charsPerLine);
-                // 段落间距算一行
                 elementLines += 1;
             } else if (tagName.match(/^h[1-6]$/)) {
-                // 标题按字数计算，标题字体一般和正文一样大
                 elementLines = calculateTextLines(text, charsPerLine);
-                elementLines += 1; // 标题后间距
+                elementLines += 1;
             } else if (tagName === 'pre' || tagName === 'blockquote' || tagName === 'table') {
-                // 代码块等按行数计算
                 const lineCount = text.split('\n').length;
-                elementLines = lineCount + 1; // +1 for margin
+                elementLines = lineCount + 1;
             } else {
-                // 其他元素简单计算
                 elementLines = calculateTextLines(text, charsPerLine) || 1;
                 elementLines += 1;
             }
             
-            // 如果当前页为空，直接添加
             if (currentPageLines === 0) {
                 currentPageDiv.appendChild(el);
                 currentPageLines += elementLines;
             }
-            // 如果添加后不超过行数限制，直接添加
             else if (currentPageLines + elementLines <= linesPerPage) {
                 currentPageDiv.appendChild(el);
                 currentPageLines += elementLines;
             }
-            // 如果是段落且内容较长，尝试切分
             else if (tagName === 'p' && text.length > 30) {
                 const remainingLines = linesPerPage - currentPageLines;
-                const linesNeeded = elementLines - 1; // 减掉间距
+                const linesNeeded = elementLines - 1;
                 
-                // 如果可以放至少一部分且不是全部
                 if (remainingLines >= 1 && remainingLines < linesNeeded) {
                     const splitResult = splitTextByLines(text, charsPerLine, remainingLines);
                     
-                    // 第一部分
                     const firstPart = document.createElement('p');
                     firstPart.textContent = splitResult.firstPart;
                     firstPart.className = 'split-end';
@@ -1156,9 +1147,8 @@
                     }
                     
                     currentPageDiv.appendChild(firstPart);
-                    currentPageLines = linesPerPage; // 页面满了
+                    currentPageLines = linesPerPage;
                     
-                    // 第二部分
                     const secondPart = document.createElement('p');
                     secondPart.textContent = splitResult.secondPart;
                     secondPart.className = 'split-start';
@@ -1166,17 +1156,14 @@
                         secondPart.setAttribute('data-index', el.getAttribute('data-index') + '-cont');
                     }
                     
-                    // 创建新页面
                     currentPageDiv = document.createElement('div');
                     currentPageDiv.className = 'page';
                     contentDiv.appendChild(currentPageDiv);
                     
                     currentPageDiv.appendChild(secondPart);
-                    // 计算剩余行数
                     const remainingTextLines = calculateTextLines(splitResult.secondPart, charsPerLine);
-                    currentPageLines = remainingTextLines + 1; // +1 for margin
+                    currentPageLines = remainingTextLines + 1;
                 } else {
-                    // 整体放到下一页
                     currentPageDiv = document.createElement('div');
                     currentPageDiv.className = 'page';
                     contentDiv.appendChild(currentPageDiv);
@@ -1185,7 +1172,6 @@
                     currentPageLines = elementLines;
                 }
             }
-            // 其他元素直接放到下一页
             else {
                 currentPageDiv = document.createElement('div');
                 currentPageDiv.className = 'page';
@@ -1205,14 +1191,43 @@
         const pageControls = document.getElementById('pageControls');
         pageControls.style.display = 'flex';
         
-        // 更新页码显示
-        currentPage = 1;
+        // 计算目标页码
+        let targetPage = 1;
+        if (targetParagraphIndex !== null) {
+            targetPage = findPageByParagraphIndex(targetParagraphIndex);
+            console.log('目标段落索引:', targetParagraphIndex, '对应页码:', targetPage);
+        }
+        
+        // 设置当前页并显示
+        currentPage = targetPage;
         updatePageInfo();
         updatePageButtons();
-        showPage(1);
+        showPage(targetPage);
+    }
+    
+    // 初始化翻页模式（带进度恢复）- 先获取进度再分页
+    async function initPaginatedMode() {
+        // 先获取服务器进度
+        let targetParagraphIndex = null;
+        try {
+            const progressUrl = SERVER_CONFIG.progressOnly && SERVER_CONFIG.remoteServerUrl
+                ? `${SERVER_CONFIG.remoteServerUrl}/get-progress?name=` + encodeURIComponent(fileName)
+                : '/get-progress?name=' + encodeURIComponent(fileName);
+            
+            const response = await fetch(progressUrl);
+            if (response.ok) {
+                const data = await response.json();
+                if (data.progress !== null && data.progress >= 0) {
+                    targetParagraphIndex = data.progress;
+                    console.log('初始化翻页模式，服务器进度段落:', targetParagraphIndex);
+                }
+            }
+        } catch (error) {
+            console.error('获取进度失败:', error);
+        }
         
-        // 恢复阅读进度
-        restorePaginatedProgress();
+        // 执行分页（传入目标段落索引，分页后跳转）
+        paginateContent(targetParagraphIndex);
     }
     
     // 显示指定页面
@@ -1228,6 +1243,16 @@
         });
     }
     
+    // 切换到指定页面（不保存进度，用于初始跳转）
+    function showPageWithoutSave(pageNum) {
+        if (pageNum < 1 || pageNum > totalPages) return;
+        
+        currentPage = pageNum;
+        showPage(currentPage);
+        updatePageInfo();
+        updatePageButtons();
+    }
+    
     // 切换到指定页面
     function goToPage(pageNum) {
         if (pageNum < 1 || pageNum > totalPages) return;
@@ -1237,7 +1262,7 @@
         updatePageInfo();
         updatePageButtons();
         
-        // 保存阅读进度（页码）
+        // 保存阅读进度
         savePaginatedProgress();
     }
     
@@ -1266,8 +1291,58 @@
         document.getElementById('nextPage').disabled = currentPage === totalPages;
     }
     
+    // 获取当前阅读位置的段落索引（统一返回 0-based 索引）
+    function getCurrentParagraphIndex() {
+        if (isPaginated) {
+            // 翻页模式：获取当前页第一个段落的索引
+            const currentPageElement = document.querySelector('.content.paginated .page.active');
+            if (currentPageElement) {
+                const paragraphs = currentPageElement.querySelectorAll('p[id], p[data-index]');
+                if (paragraphs.length > 0) {
+                    const firstP = paragraphs[0];
+                    const index = firstP.getAttribute('data-index');
+                    if (index !== null) {
+                        return parseInt(index, 10);
+                    }
+                    const idNum = parseInt(firstP.id, 10);
+                    return isNaN(idNum) ? null : idNum - 1;
+                }
+            }
+        } else {
+            // 滚动模式：获取屏幕中间的段落索引
+            if (EPUB_LOADER.isEpub) {
+                return getMiddleParagraphIndex();
+            } else {
+                // getMiddlePIndex 返回的是 1-based id，需要转换为 0-based 索引
+                const id = getMiddlePIndex();
+                return id !== null ? id - 1 : null;
+            }
+        }
+        return null;
+    }
+    
+    // 根据段落索引找到页码
+    function findPageByParagraphIndex(paragraphIndex) {
+        if (paragraphIndex === null) return 1;
+        const targetId = EPUB_LOADER.isEpub ? String(paragraphIndex) : String(paragraphIndex + 1);
+        const allPages = document.querySelectorAll('.content.paginated .page');
+        
+        for (let i = 0; i < allPages.length; i++) {
+            const byId = allPages[i].querySelector(`[id="${targetId}"]`);
+            const byDataIndex = allPages[i].querySelector(`[data-index="${paragraphIndex}"]`);
+            if (byId || byDataIndex) {
+                return i + 1;
+            }
+        }
+        return 1;
+    }
+    
     // 切换阅读模式
     function toggleReadingMode() {
+        // 先获取当前位置的段落索引（切换前）
+        const currentParagraphIndex = getCurrentParagraphIndex();
+        console.log('切换模式前当前段落索引:', currentParagraphIndex);
+        
         isPaginated = !isPaginated;
         localStorage.setItem('readingMode', isPaginated ? 'paginated' : 'scroll');
         
@@ -1278,11 +1353,13 @@
         if (isPaginated) {
             // 切换到翻页模式
             modeToggle.title = '切换为滚动模式';
-            paginateContent();
             
             // 显示点击翻页区域
             document.getElementById('clickAreaLeft').style.display = 'block';
             document.getElementById('clickAreaRight').style.display = 'block';
+            
+            // 执行分页（传入当前段落索引，分页后会自动跳转）
+            paginateContent(currentParagraphIndex);
         } else {
             // 切换到滚动模式
             modeToggle.title = '切换为翻页模式';
@@ -1296,13 +1373,25 @@
             
             // EPUB 模式下不需要重新渲染，直接显示已加载的内容
             if (!EPUB_LOADER.isEpub) {
-                // 重新渲染原始内容
                 const text = contentDiv.getAttribute('data-original-text') || '';
                 if (text) {
                     const processedText = preprocessText(text);
                     parseMarkdownToHtmlSimple(processedText);
                 }
             }
+            
+            // 滚动到对应位置
+            setTimeout(() => {
+                if (currentParagraphIndex !== null) {
+                    const targetId = EPUB_LOADER.isEpub ? String(currentParagraphIndex) : String(currentParagraphIndex + 1);
+                    const targetElement = document.getElementById(targetId) || 
+                                         document.querySelector(`[data-index="${currentParagraphIndex}"]`);
+                    if (targetElement) {
+                        targetElement.scrollIntoView({ behavior: 'auto', block: 'start' });
+                        console.log('滚动到段落:', targetId);
+                    }
+                }
+            }, 100);
         }
     }
     
@@ -1328,31 +1417,81 @@
         });
     }
     
-    // 保存翻页进度
-    function savePaginatedProgress() {
-        const progressData = {
-            mode: 'paginated',
-            page: currentPage,
-            timestamp: Date.now()
-        };
-        localStorage.setItem(`progress_${fileName}`, JSON.stringify(progressData));
+    // 保存翻页进度（保存当前页第一个段落索引到服务器）
+    async function savePaginatedProgress() {
+        const currentPageElement = document.querySelector('.content.paginated .page.active');
+        if (!currentPageElement) return;
+        
+        const paragraphs = currentPageElement.querySelectorAll('p[id], p[data-index]');
+        if (paragraphs.length === 0) return;
+        
+        const firstP = paragraphs[0];
+        let paragraphIndex;
+        
+        const dataIndex = firstP.getAttribute('data-index');
+        if (dataIndex !== null) {
+            paragraphIndex = parseInt(dataIndex, 10);
+        } else {
+            const idNum = parseInt(firstP.id, 10);
+            paragraphIndex = isNaN(idNum) ? null : idNum - 1;
+        }
+        
+        if (paragraphIndex === null) return;
+        
+        console.log('翻页模式保存进度，段落索引:', paragraphIndex);
+        
+        try {
+            const progressUrl = SERVER_CONFIG.progressOnly && SERVER_CONFIG.remoteServerUrl
+                ? `${SERVER_CONFIG.remoteServerUrl}/log-middle-p-index`
+                : '/log-middle-p-index';
+            
+            await fetch(progressUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    fileName: fileName,
+                    middlePIndex: paragraphIndex
+                })
+            });
+        } catch (error) {
+            console.error('保存翻页进度失败:', error);
+        }
     }
     
-    // 恢复翻页进度
-    function restorePaginatedProgress() {
+    // 恢复翻页进度（尝试恢复到服务器最新进度）
+    async function restorePaginatedProgress() {
+        let paragraphIndex = null;
+        
         try {
-            const saved = localStorage.getItem(`progress_${fileName}`);
-            if (saved) {
-                const data = JSON.parse(saved);
-                if (data.mode === 'paginated' && data.page && data.page <= totalPages) {
-                    goToPage(data.page);
-                    return;
+            const progressUrl = SERVER_CONFIG.progressOnly && SERVER_CONFIG.remoteServerUrl
+                ? `${SERVER_CONFIG.remoteServerUrl}/get-progress?name=` + encodeURIComponent(fileName)
+                : '/get-progress?name=' + encodeURIComponent(fileName);
+            
+            const response = await fetch(progressUrl);
+            if (response.ok) {
+                const data = await response.json();
+                if (data.progress !== null && data.progress >= 0) {
+                    paragraphIndex = data.progress;
+                    console.log('翻页模式恢复进度，段落索引:', paragraphIndex);
                 }
             }
         } catch (e) {
-            console.error('恢复翻页进度失败:', e);
+            console.error('获取进度失败:', e);
         }
-        goToPage(1);
+        
+        if (paragraphIndex === null) {
+            console.log('没有进度信息，保持在第1页');
+            return;
+        }
+        
+        // 找到该段落在哪一页
+        const targetPage = findPageByParagraphIndex(paragraphIndex);
+        if (targetPage > 1) {
+            console.log('找到对应页码:', targetPage);
+            showPageWithoutSave(targetPage);
+        }
     }
 
     // -------------------------------------------------------------

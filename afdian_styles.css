@@ -9,10 +9,14 @@ body {
 h1, h2, h3, h4 {
     font-size: 1em;
 }
-h1::before { content: "# "; color: #777; }
+/* h1::before { content: "# "; color: #777; }
 h2::before { content: "# "; color: #999; }
 h3::before { content: "# "; color: #ccc; }
-h4::before { content: "# "; color: #eee; }
+h4::before { content: "# "; color: #eee; } */
+h1::before { content: "| "; color: #777; }
+h2::before { content: "| "; color: #999; }
+h3::before { content: "| "; color: #ccc; }
+h4::before { content: "| "; color: #eee; }
 
 a {
     color: #946DE6;

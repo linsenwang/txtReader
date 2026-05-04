@@ -162,6 +162,17 @@
             }
         }
 
+        // HTML 转义函数，防止 XSS
+        function escapeHtml(text) {
+            if (typeof text !== 'string') return text;
+            return text
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
+
         document.addEventListener('DOMContentLoaded', async function() {
             // 先获取服务器配置
             await loadServerConfig();
@@ -199,16 +210,16 @@
                         const moFileName = file.name.replace(/_/g, ' ').replace(/--/g, ' ').replace(/\.txt$/g, '').replace(/\.md$/g, '').replace(/\.epub$/i, '').replace(/——/g, ' ');
                         const mtime = new Date(file.mtime).toLocaleString().replace(/,/g, ' '); // 格式化日期
                         // 创建包含文件名和修改时间的列表项
-                        // htmlContent += `<li><a href="file.html?name=${encodeURIComponent(fileName)}">${moFileName}</a><span class="mtime">${mtime}</span></li>`;
+                        // htmlContent += `<li><a href="file.html?name=${encodeURIComponent(fileName)}">${escapeHtml(moFileName)}</a><span class="mtime">${mtime}</span></li>`;
                         if (fileName.toLowerCase().endsWith('.epub')) {
                             // 如果是 EPUB 文件，显示 EPUB 图标
-                            htmlContent += `<li class="file epub"><a href="file.html?name=${dir && dir !== '' ? encodeURIComponent(dir) + '/' : ''}${encodeURIComponent(fileName)}"><img src="web_icon/epub.svg" class='folder_icon'>${moFileName}</a><span class="mtime">${mtime}</span></li>`;
+                            htmlContent += `<li class="file epub"><a href="file.html?name=${dir && dir !== '' ? encodeURIComponent(dir) + '/' : ''}${encodeURIComponent(fileName)}"><img src="web_icon/epub.svg" class='folder_icon'>${escapeHtml(moFileName)}</a><span class="mtime">${mtime}</span></li>`;
                         } else if (fileName.endsWith('.txt') || fileName.endsWith('.md')) {
                             // 如果是 txt/md 文件，显示文件名称和修改时间
-                            htmlContent += `<li class="file"><a href="file.html?name=${dir && dir !== '' ? encodeURIComponent(dir) + '/' : ''}${encodeURIComponent(fileName)}">${moFileName}</a><span class="mtime">${mtime}</span></li>`;
+                            htmlContent += `<li class="file"><a href="file.html?name=${dir && dir !== '' ? encodeURIComponent(dir) + '/' : ''}${encodeURIComponent(fileName)}">${escapeHtml(moFileName)}</a><span class="mtime">${mtime}</span></li>`;
                         } else {
                             // 如果是文件夹，显示文件夹名称并添加链接到文件夹页面
-                            htmlContent += `<li class="folder"><a href="index.html?dir=${encodeURIComponent(fileName)}"><img src="web_icon/folder.svg" class='folder_icon'>${moFileName}</a><span class="mtime">${mtime}</span></li>`;
+                            htmlContent += `<li class="folder"><a href="index.html?dir=${encodeURIComponent(fileName)}"><img src="web_icon/folder.svg" class='folder_icon'>${escapeHtml(moFileName)}</a><span class="mtime">${mtime}</span></li>`;
                         }
                     });
                     htmlContent += '</ul>';

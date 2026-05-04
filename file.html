@@ -595,8 +595,8 @@
         
         // 创建临时容器解析内容
         const tempDiv = document.createElement('div');
-        tempDiv.innerHTML = marked.parse(contentHtml);
-        
+        tempDiv.innerHTML = sanitizeHtml(marked.parse(contentHtml));
+
         // 给每个段落添加ID
         const paragraphs = tempDiv.querySelectorAll('p[data-index]');
         paragraphs.forEach(p => {
@@ -645,8 +645,8 @@
         
         // 创建临时容器解析内容
         const tempDiv = document.createElement('div');
-        tempDiv.innerHTML = marked.parse(contentHtml);
-        
+        tempDiv.innerHTML = sanitizeHtml(marked.parse(contentHtml));
+
         // 给每个段落添加ID
         const paragraphs = tempDiv.querySelectorAll('p[data-index]');
         paragraphs.forEach(p => {
@@ -903,6 +903,23 @@
             });
     }
 
+    // 简单的前端 HTML 清理：移除 script 标签和事件处理器，防止 XSS
+    function sanitizeHtml(html) {
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(html, 'text/html');
+        // 移除所有 script 和 style 标签（style 虽然不算 XSS，但防止样式污染）
+        doc.querySelectorAll('script, style').forEach(el => el.remove());
+        // 移除所有 on* 事件属性
+        doc.querySelectorAll('*').forEach(el => {
+            [...el.attributes].forEach(attr => {
+                if (attr.name.toLowerCase().startsWith('on')) {
+                    el.removeAttribute(attr.name);
+                }
+            });
+        });
+        return doc.body.innerHTML;
+    }
+
     function parseMarkdownToHtml(text) {
         console.log('正在执行 parseMarkdownToHtml 函数');
         const contentDiv = document.getElementById('content');
@@ -913,7 +930,7 @@
             return;
         }
 
-        const html = marked.parse(text);
+        const html = sanitizeHtml(marked.parse(text));
         console.log('生成的 HTML 内容：', html);
         contentDiv.innerHTML = html;
 

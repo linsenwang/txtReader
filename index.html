@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <title>txtReader</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.13.11/dist/katex.min.css">
+    <link rel="stylesheet" href="lib/katex.min.css">
     <link rel="icon" type="image/x-icon" href="web_icon/yanan.png" />
     <link rel="stylesheet" type="text/css" href="afdian_styles.css">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
@@ -108,6 +108,22 @@
             cursor: pointer;
         }
 
+        #toggleSortMode {
+            position: fixed;
+            top: 20px;
+            left: 70px;
+            z-index: 999;
+            height: 40px;
+            width: 40px;
+            background-color: rgba(255, 255, 255, 0);
+            border-radius: 40px;
+            border: none;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
 
     @media (prefers-color-scheme: dark) {
         .file-list a {
@@ -128,6 +144,7 @@
 </head>
 <body>
     <button id="toggleFoldersOnly"><img src="web_icon/folder.svg" class='folder_icon'></button>
+    <button id="toggleSortMode" title="切换排序"><img src="web_icon/sort.svg" class="folder_icon"></button>
     <!-- 文件列表 -->
     <div class="file-list" id="fileList">
         <!-- 文件列表将插入在这里 -->
@@ -199,80 +216,125 @@
             // fetch('/list-files')
             console.log('请求的文件夹：', dir); // 调试信息
 
+            let allFiles = [];
+            const currentDir = dir;
+
+            function renderFileList() {
+                const sortMode = localStorage.getItem('sortMode') || 'time';
+                let displayFiles = [...allFiles];
+                if (sortMode === 'name') {
+                    displayFiles.sort((a, b) => {
+                        const aIsDir = !a.name.endsWith('.txt') && !a.name.endsWith('.md') && !a.name.toLowerCase().endsWith('.epub');
+                        const bIsDir = !b.name.endsWith('.txt') && !b.name.endsWith('.md') && !b.name.toLowerCase().endsWith('.epub');
+                        if (aIsDir !== bIsDir) return aIsDir ? -1 : 1;
+                        return a.name.localeCompare(b.name, 'zh-CN', { numeric: true, sensitivity: 'base' });
+                    });
+                }
+
+                const fileListDiv = document.getElementById('fileList');
+                let htmlContent = '<ul>';
+                displayFiles.forEach(file => {
+                    const fileName = file.name;
+                    const moFileName = file.name.replace(/_/g, ' ').replace(/--/g, ' ').replace(/\.txt$/g, '').replace(/\.md$/g, '').replace(/\.epub$/i, '').replace(/——/g, ' ');
+                    const mtime = new Date(file.mtime).toLocaleString().replace(/,/g, ' '); // 格式化日期
+                    if (fileName.toLowerCase().endsWith('.epub')) {
+                        htmlContent += `<li class="file epub"><a href="file.html?name=${currentDir && currentDir !== '' ? encodeURIComponent(currentDir) + '/' : ''}${encodeURIComponent(fileName)}"><img src="web_icon/epub.svg" class='folder_icon'>${escapeHtml(moFileName)}</a><span class="mtime">${mtime}</span></li>`;
+                    } else if (fileName.endsWith('.txt') || fileName.endsWith('.md')) {
+                        htmlContent += `<li class="file"><a href="file.html?name=${currentDir && currentDir !== '' ? encodeURIComponent(currentDir) + '/' : ''}${encodeURIComponent(fileName)}">${escapeHtml(moFileName)}</a><span class="mtime">${mtime}</span></li>`;
+                    } else {
+                        htmlContent += `<li class="folder"><a href="index.html?dir=${encodeURIComponent(fileName)}"><img src="web_icon/folder.svg" class='folder_icon'>${escapeHtml(moFileName)}</a><span class="mtime">${mtime}</span></li>`;
+                    }
+                });
+                htmlContent += '</ul>';
+                fileListDiv.innerHTML = htmlContent;
+
+                // 如果当前是仅文件夹模式，重新应用隐藏
+                if (foldersOnly) {
+                    const fileItems = document.querySelectorAll('li.file');
+                    fileItems.forEach(file => {
+                        if (file.classList.contains('epub')) {
+                            file.style.display = '';
+                        } else {
+                            file.style.display = 'none';
+                        }
+                    });
+                }
+            }
+
             fetch(`/list-files?dir=${encodeURIComponent(dir)}`)
                 .then(response => response.json())
                 .then(files => {
                     console.log('接收到的文件列表：', files); // 调试信息
-                    const fileListDiv = document.getElementById('fileList');
-                    let htmlContent = '<ul>';
-                    files.forEach(file => {
-                        const fileName = file.name;
-                        const moFileName = file.name.replace(/_/g, ' ').replace(/--/g, ' ').replace(/\.txt$/g, '').replace(/\.md$/g, '').replace(/\.epub$/i, '').replace(/——/g, ' ');
-                        const mtime = new Date(file.mtime).toLocaleString().replace(/,/g, ' '); // 格式化日期
-                        // 创建包含文件名和修改时间的列表项
-                        // htmlContent += `<li><a href="file.html?name=${encodeURIComponent(fileName)}">${escapeHtml(moFileName)}</a><span class="mtime">${mtime}</span></li>`;
-                        if (fileName.toLowerCase().endsWith('.epub')) {
-                            // 如果是 EPUB 文件，显示 EPUB 图标
-                            htmlContent += `<li class="file epub"><a href="file.html?name=${dir && dir !== '' ? encodeURIComponent(dir) + '/' : ''}${encodeURIComponent(fileName)}"><img src="web_icon/epub.svg" class='folder_icon'>${escapeHtml(moFileName)}</a><span class="mtime">${mtime}</span></li>`;
-                        } else if (fileName.endsWith('.txt') || fileName.endsWith('.md')) {
-                            // 如果是 txt/md 文件，显示文件名称和修改时间
-                            htmlContent += `<li class="file"><a href="file.html?name=${dir && dir !== '' ? encodeURIComponent(dir) + '/' : ''}${encodeURIComponent(fileName)}">${escapeHtml(moFileName)}</a><span class="mtime">${mtime}</span></li>`;
-                        } else {
-                            // 如果是文件夹，显示文件夹名称并添加链接到文件夹页面
-                            htmlContent += `<li class="folder"><a href="index.html?dir=${encodeURIComponent(fileName)}"><img src="web_icon/folder.svg" class='folder_icon'>${escapeHtml(moFileName)}</a><span class="mtime">${mtime}</span></li>`;
-                        }
-                    });
-                    htmlContent += '</ul>';
-                    fileListDiv.innerHTML = htmlContent;
+                    allFiles = files;
+                    renderFileList();
                 })
                 .catch(error => {
                     console.error('获取文件列表出错：', error);
                 });
-        });
 
-    const button = document.getElementById('toggleFoldersOnly');
-    let foldersOnly = false;
+            const button = document.getElementById('toggleFoldersOnly');
+            let foldersOnly = false;
 
-    function toggleFoldersOnly() {
-        foldersOnly = !foldersOnly;
-        const files = document.querySelectorAll('li.file');
-        const folders = document.querySelectorAll('li.folder');
-        const epubs = document.querySelectorAll('li.file.epub');
-        
-        if (foldersOnly) {
-            // 只显示文件夹和 EPUB 文件，隐藏纯文本文件
-            files.forEach(file => {
-                if (file.classList.contains('epub')) {
-                    file.style.display = '';
+            function toggleFoldersOnly() {
+                foldersOnly = !foldersOnly;
+                const fileItems = document.querySelectorAll('li.file');
+                const folderItems = document.querySelectorAll('li.folder');
+
+                if (foldersOnly) {
+                    fileItems.forEach(file => {
+                        if (file.classList.contains('epub')) {
+                            file.style.display = '';
+                        } else {
+                            file.style.display = 'none';
+                        }
+                    });
+                    folderItems.forEach(folder => {
+                        folder.style.display = '';
+                    });
                 } else {
-                    file.style.display = 'none';
+                    fileItems.forEach(file => {
+                        file.style.display = '';
+                    });
+                    folderItems.forEach(folder => {
+                        folder.style.display = '';
+                    });
+                }
+            }
+
+            button.addEventListener('click', () => {
+                toggleFoldersOnly();
+            });
+
+            document.addEventListener('keydown', function(event) {
+                if (event.shiftKey && event.metaKey && event.key.toLowerCase() === 'f') {
+                    event.preventDefault();
+                    toggleFoldersOnly();
                 }
             });
-            folders.forEach(folder => {
-                folder.style.display = '';
-            });
-        } else {
-            // 显示所有
-            files.forEach(file => {
-                file.style.display = '';
-            });
-            folders.forEach(folder => {
-                folder.style.display = '';
-            });
-        }
-    }
 
-    button.addEventListener('click', () => {
-        toggleFoldersOnly();
-    });
+            // 排序切换
+            const sortButton = document.getElementById('toggleSortMode');
+            let sortMode = localStorage.getItem('sortMode') || 'time';
+            sortButton.title = sortMode === 'time' ? '按时间排序，点击切换' : '按名称排序，点击切换';
 
-    document.addEventListener('keydown', function(event) {
-        // Check if Shift + Command (Meta) + S is pressed
-        if (event.shiftKey && event.metaKey && event.key.toLowerCase() === 'f') {
-            event.preventDefault();
-            toggleFoldersOnly();
-        }
-    });
+            function toggleSortMode() {
+                sortMode = sortMode === 'time' ? 'name' : 'time';
+                localStorage.setItem('sortMode', sortMode);
+                sortButton.title = sortMode === 'time' ? '按时间排序，点击切换' : '按名称排序，点击切换';
+                renderFileList();
+            }
+
+            sortButton.addEventListener('click', () => {
+                toggleSortMode();
+            });
+
+            document.addEventListener('keydown', function(event) {
+                if (event.shiftKey && event.metaKey && event.key.toLowerCase() === 's') {
+                    event.preventDefault();
+                    toggleSortMode();
+                }
+            });
+        });
 
 
     </script>

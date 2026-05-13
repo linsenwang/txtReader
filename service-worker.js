@@ -1,4 +1,4 @@
-const CACHE_NAME = 'txtreader-v1';
+const CACHE_NAME = 'txtreader-v2';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
@@ -6,11 +6,17 @@ const STATIC_ASSETS = [
   '/afdian_styles.css',
   '/afdian_styles-print.css',
   '/recLoc.js',
+  '/lib/katex.min.css',
+  '/lib/katex.min.js',
+  '/lib/auto-render.min.js',
+  '/lib/marked.min.js',
   '/web_icon/yanan.png',
   '/web_icon/yanan-f.png',
   '/web_icon/folder.svg',
   '/web_icon/refresh.svg',
   '/web_icon/epub.svg',
+  '/web_icon/sort.svg',
+  '/web_icon/arrow.svg',
   '/fonts/SarasaMonoSC-Regular.ttf'
 ];
 

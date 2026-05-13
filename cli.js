@@ -100,7 +100,8 @@ async function main() {
         ...process.env,
         PRO_DIR: targetDir,
         PORT: String(port),
-        HOST: '127.0.0.1',
+        // HOST: '127.0.0.1',
+        HOST: '0.0.0.0',
         HASHES_FILE: hashesFile
     };
 

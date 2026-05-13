@@ -427,13 +427,20 @@ const HASHES_FILE = process.env.HASHES_FILE || 'hashes.json';
 
 app.post('/log-middle-p-index', async (req, res) => { // 将路由处理函数标记为 async
     const { fileName, middlePIndex } = req.body;
+    console.log('[DEBUG /log-middle-p-index] 收到请求体:', req.body);
 
     if (!fileName || middlePIndex === undefined) {
+        console.log('[DEBUG /log-middle-p-index] 缺少必要参数:', { fileName, middlePIndex });
         return res.status(400).json({ error: '缺少必要的参数' });
     }
 
     // 参数类型校验
     if (typeof fileName !== 'string' || typeof middlePIndex !== 'number' || !Number.isFinite(middlePIndex)) {
+        console.log('[DEBUG /log-middle-p-index] 参数类型错误:', {
+            fileName, typeOfFileName: typeof fileName,
+            middlePIndex, typeOfMiddlePIndex: typeof middlePIndex,
+            isFinite: Number.isFinite(middlePIndex)
+        });
         return res.status(400).json({ error: '参数类型错误' });
     }
 
@@ -477,7 +484,10 @@ app.post('/log-middle-p-index', async (req, res) => { // 将路由处理函数�
             const storedValue = hashes[hash] !== undefined ? hashes[hash] : Number.NEGATIVE_INFINITY;
 
             // 如果请求中包含 force: true，则直接覆盖，否则取较大的值
-            valueToStore = req.body.force ? middlePIndex : Math.max(storedValue, middlePIndex);
+            // 强制转换为数字，防止 hashes.json 中的字符串值导致字典序比较错误
+            const storedNum = Number(storedValue);
+            const incomingNum = Number(middlePIndex);
+            valueToStore = req.body.force ? incomingNum : Math.max(storedNum, incomingNum);
             hashes[hash] = valueToStore;
 
             try {
@@ -551,12 +561,11 @@ app.get('/get-progress', async (req, res) => {
         }
     }
 
-    const progress = Math.max(
-        localProgress !== null ? localProgress : Number.NEGATIVE_INFINITY,
-        remoteProgress !== null ? remoteProgress : Number.NEGATIVE_INFINITY
-    );
+    const localNum = localProgress !== null ? Number(localProgress) : Number.NEGATIVE_INFINITY;
+    const remoteNum = remoteProgress !== null ? Number(remoteProgress) : Number.NEGATIVE_INFINITY;
+    const progress = Math.max(localNum, remoteNum);
     
-    const finalProgress = progress !== Number.NEGATIVE_INFINITY ? progress : null;
+    const finalProgress = progress !== Number.NEGATIVE_INFINITY && !isNaN(progress) ? progress : null;
 
     res.json({ fileName, hash, progress: finalProgress });
 });

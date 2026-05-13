@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <title>txtReader</title>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.13.11/katex.min.css">
+    <link rel="stylesheet" href="lib/katex.min.css">
     <link rel="icon" type="image/x-icon" href="web_icon/yanan.png" />
     <link rel="stylesheet" type="text/css" href="afdian_styles.css">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
@@ -262,9 +262,9 @@
     </div>
 
     <!-- 引入必要的库 -->
-    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.13.11/katex.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.13.11/contrib/auto-render.min.js"></script>
+    <script src="lib/marked.min.js"></script>
+    <script src="lib/katex.min.js"></script>
+    <script src="lib/auto-render.min.js"></script>
 
     <script type="module">
     // 服务器配置
@@ -713,10 +713,14 @@
             
             if (distance < closestDistance) {
                 closestDistance = distance;
-                closest = parseInt(p.getAttribute('data-index'));
+                const idx = parseInt(p.getAttribute('data-index'), 10);
+                if (Number.isFinite(idx)) {
+                    closest = idx;
+                }
             }
         });
         
+        console.log('[DEBUG getMiddleParagraphIndex] 返回 closest=', closest, 'type=', typeof closest);
         return closest;
     }
     
@@ -1453,7 +1457,11 @@
             paragraphIndex = isNaN(idNum) ? null : idNum - 1;
         }
         
-        if (paragraphIndex === null) return;
+        console.log('[DEBUG savePaginatedProgress] fileName=', fileName, 'type=', typeof fileName, 'paragraphIndex=', paragraphIndex, 'type=', typeof paragraphIndex, 'isFinite=', Number.isFinite(paragraphIndex));
+        if (paragraphIndex === null || !Number.isFinite(paragraphIndex)) {
+            console.log('[DEBUG savePaginatedProgress] 因索引无效跳过发送');
+            return;
+        }
         
         console.log('翻页模式保存进度，段落索引:', paragraphIndex);
         
@@ -1555,10 +1563,15 @@
         if (EPUB_LOADER.isEpub) {
             middlePIndex = getMiddleParagraphIndex();
         } else {
-            middlePIndex = getMiddlePIndex();
+            const id = getMiddlePIndex();
+            middlePIndex = id !== null ? parseInt(id, 10) : null;
         }
 
-        if (middlePIndex === null) return; // 如果没有p元素，则不发送请求
+        console.log('[DEBUG checkAndSendMiddlePIndex] fileName=', fileName, 'type=', typeof fileName, 'middlePIndex=', middlePIndex, 'type=', typeof middlePIndex, 'isFinite=', Number.isFinite(middlePIndex));
+        if (middlePIndex === null || !Number.isFinite(middlePIndex)) {
+            console.log('[DEBUG checkAndSendMiddlePIndex] 因索引无效跳过发送');
+            return;
+        }
 
         console.log(fileName, "当前中间的 p 是第", middlePIndex, "个");
 
@@ -1615,9 +1628,14 @@
         }
         
         // EPUB 模式下使用段落索引
-        const middlePIndex = EPUB_LOADER.isEpub ? getMiddleParagraphIndex() : getMiddlePIndex();
+        const rawIndex = EPUB_LOADER.isEpub ? getMiddleParagraphIndex() : getMiddlePIndex();
+        const middlePIndex = rawIndex !== null ? parseInt(rawIndex, 10) : null;
 
-        if (middlePIndex === null) return; // 如果没有p元素，则不发送请求
+        console.log('[DEBUG forceUpdateMiddlePIndex] fileName=', fileName, 'type=', typeof fileName, 'middlePIndex=', middlePIndex, 'type=', typeof middlePIndex, 'isFinite=', Number.isFinite(middlePIndex));
+        if (middlePIndex === null || !Number.isFinite(middlePIndex)) {
+            console.log('[DEBUG forceUpdateMiddlePIndex] 因索引无效跳过发送');
+            return;
+        }
 
         console.log(fileName, "强制更新中间的 p 是第", middlePIndex, "个");
 

@@ -17,6 +17,8 @@ export function getMiddlePIndex() {
         }
     });
 
-    return closestP ? closestP.id || null : null; // 返回 id，如果没有 id，则返回 null
+    const result = closestP ? closestP.id || null : null; // 返回 id，如果没有 id，则返回 null
+    console.log('[DEBUG getMiddlePIndex] 返回 id=', result, 'type=', typeof result);
+    return result;
 }
 

@@ -418,6 +418,17 @@
             return;
         }
 
+        // 记录已访问文件
+        try {
+            const visitedFiles = JSON.parse(localStorage.getItem('visitedFiles') || '[]');
+            if (!visitedFiles.includes(fileName)) {
+                visitedFiles.push(fileName);
+                localStorage.setItem('visitedFiles', JSON.stringify(visitedFiles));
+            }
+        } catch (e) {
+            console.error('记录已访问文件失败:', e);
+        }
+
         // 更新页面标题
         document.title = fileName.replace(/\.txt$/i, '').replace(/\.md$/i, '').replace(/\.epub$/i, '').trim();
 
@@ -1438,6 +1449,85 @@
         });
     }
     
+    // 计算当前阅读百分比（统一基于段落数）
+    function getCurrentReadingPercent() {
+        if (EPUB_LOADER.isEpub && EPUB_LOADER.totalParagraphs > 0) {
+            let progress = 0;
+            if (isPaginated) {
+                const currentPageElement = document.querySelector('.content.paginated .page.active');
+                if (currentPageElement) {
+                    const firstP = currentPageElement.querySelector('p[data-index]');
+                    if (firstP) {
+                        progress = parseInt(firstP.getAttribute('data-index'), 10) || 0;
+                    }
+                }
+            } else {
+                progress = getMiddleParagraphIndex() || 0;
+            }
+            // 距离末尾 5 段以内视为读完
+            if (EPUB_LOADER.totalParagraphs - progress <= 5) return 100;
+            return Math.min(100, Math.round((progress / EPUB_LOADER.totalParagraphs) * 100));
+        }
+
+        // 普通文件：基于 <p> 的数量计算
+        const allP = document.querySelectorAll('#content p');
+        const total = allP.length;
+        if (total === 0) return null;
+
+        let currentPIndex = -1;
+        if (isPaginated) {
+            const currentPageElement = document.querySelector('.content.paginated .page.active');
+            if (currentPageElement) {
+                const firstP = currentPageElement.querySelector('p');
+                if (firstP) {
+                    for (let i = 0; i < allP.length; i++) {
+                        if (allP[i] === firstP) { currentPIndex = i; break; }
+                    }
+                }
+            }
+        } else {
+            const viewportMiddle = window.innerHeight / 2 + window.scrollY;
+            let closestDistance = Infinity;
+            let closestP = null;
+            allP.forEach(p => {
+                const rect = p.getBoundingClientRect();
+                const pMiddle = rect.top + window.scrollY + rect.height / 2;
+                const distance = Math.abs(viewportMiddle - pMiddle);
+                if (distance < closestDistance) {
+                    closestDistance = distance;
+                    closestP = p;
+                }
+            });
+            if (closestP) {
+                for (let i = 0; i < allP.length; i++) {
+                    if (allP[i] === closestP) { currentPIndex = i; break; }
+                }
+            }
+        }
+
+        if (currentPIndex >= 0) {
+            // 距离末尾 5 段以内视为读完
+            if (total - currentPIndex <= 5) return 100;
+            return Math.min(100, Math.round((currentPIndex / total) * 100));
+        }
+        return null;
+    }
+
+    // 缓存阅读进度到本地
+    function cacheReadingProgress() {
+        try {
+            const percent = getCurrentReadingPercent();
+            if (percent !== null) {
+                localStorage.setItem(`progress_${fileName}`, JSON.stringify({
+                    percent: percent,
+                    timestamp: Date.now()
+                }));
+            }
+        } catch (e) {
+            console.error('缓存阅读进度失败:', e);
+        }
+    }
+
     // 保存翻页进度（保存当前页第一个段落索引到服务器）
     async function savePaginatedProgress() {
         const currentPageElement = document.querySelector('.content.paginated .page.active');
@@ -1464,6 +1554,7 @@
         }
         
         console.log('翻页模式保存进度，段落索引:', paragraphIndex);
+        cacheReadingProgress();
         
         try {
             const progressUrl = SERVER_CONFIG.progressOnly && SERVER_CONFIG.remoteServerUrl
@@ -1589,6 +1680,7 @@
         .then(response => response.json())
         .then(async data => {
             console.log('服务器响应:', data);
+            cacheReadingProgress();
 
             if (firstLoad) {
                 firstLoad = false;
@@ -1653,6 +1745,7 @@
         .then(response => response.json())
         .then(data => {
             console.log('服务器响应:', data);
+            cacheReadingProgress();
             showToast('位置已更新');
         })
         .catch(error => console.error('发送数据失败:', error));

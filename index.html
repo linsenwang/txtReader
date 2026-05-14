@@ -84,8 +84,16 @@
             color: #0056b3; /* 深色悬停效果 */
         }
 
-        .file-list a:visited {
-        color: #888; /* 设置访问过的链接为紫色 */
+        .file-list li.visited a {
+            color: #888;
+        }
+
+        .file-list .read-percent {
+            display: none;
+        }
+
+        .file-list li:hover .read-percent {
+            display: inline;
         }
 
         .file-list .mtime {
@@ -138,6 +146,14 @@
             /* text-decoration: underline; */
             text-decoration: none;
             color: #3388cc; /* 深色悬停效果 */
+        }
+
+        .file-list li.visited a {
+            color: #888;
+        }
+
+        .file-list .read-percent {
+            color: #aaa;
         }
     }
     </style>
@@ -219,6 +235,21 @@
             let allFiles = [];
             const currentDir = dir;
 
+            const visitedFiles = new Set(JSON.parse(localStorage.getItem('visitedFiles') || '[]'));
+
+            function getFilePercent(filePath) {
+                try {
+                    const data = localStorage.getItem(`progress_${filePath}`);
+                    if (data) {
+                        const parsed = JSON.parse(data);
+                        if (parsed.percent !== undefined) {
+                            return parsed.percent;
+                        }
+                    }
+                } catch (e) {}
+                return null;
+            }
+
             function renderFileList() {
                 const sortMode = localStorage.getItem('sortMode') || 'time';
                 let displayFiles = [...allFiles];
@@ -237,10 +268,15 @@
                     const fileName = file.name;
                     const moFileName = file.name.replace(/_/g, ' ').replace(/--/g, ' ').replace(/\.txt$/g, '').replace(/\.md$/g, '').replace(/\.epub$/i, '').replace(/——/g, ' ');
                     const mtime = new Date(file.mtime).toLocaleString().replace(/,/g, ' '); // 格式化日期
+                    const fullPath = (currentDir && currentDir !== '' ? currentDir + '/' : '') + fileName;
+                    const isVisited = visitedFiles.has(fullPath);
+                    const percent = getFilePercent(fullPath);
+                    const visitedClass = isVisited ? 'visited' : '';
+                    const percentHtml = percent !== null ? `<span class="read-percent"> 已读 ${percent}%</span>` : '';
                     if (fileName.toLowerCase().endsWith('.epub')) {
-                        htmlContent += `<li class="file epub"><a href="file.html?name=${currentDir && currentDir !== '' ? encodeURIComponent(currentDir) + '/' : ''}${encodeURIComponent(fileName)}"><img src="web_icon/epub.svg" class='folder_icon'>${escapeHtml(moFileName)}</a><span class="mtime">${mtime}</span></li>`;
+                        htmlContent += `<li class="file epub ${visitedClass}"><a href="file.html?name=${encodeURIComponent(fullPath)}"><img src="web_icon/epub.svg" class='folder_icon'>${escapeHtml(moFileName)}</a><span class="mtime">${mtime}${percentHtml}</span></li>`;
                     } else if (fileName.endsWith('.txt') || fileName.endsWith('.md')) {
-                        htmlContent += `<li class="file"><a href="file.html?name=${currentDir && currentDir !== '' ? encodeURIComponent(currentDir) + '/' : ''}${encodeURIComponent(fileName)}">${escapeHtml(moFileName)}</a><span class="mtime">${mtime}</span></li>`;
+                        htmlContent += `<li class="file ${visitedClass}"><a href="file.html?name=${encodeURIComponent(fullPath)}">${escapeHtml(moFileName)}</a><span class="mtime">${mtime}${percentHtml}</span></li>`;
                     } else {
                         htmlContent += `<li class="folder"><a href="index.html?dir=${encodeURIComponent(fileName)}"><img src="web_icon/folder.svg" class='folder_icon'>${escapeHtml(moFileName)}</a><span class="mtime">${mtime}</span></li>`;
                     }

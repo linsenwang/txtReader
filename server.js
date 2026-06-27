@@ -6,7 +6,7 @@ const app = express();
 // 阻止访问敏感文件和目录的中间件
 app.use((req, res, next) => {
     const forbiddenPatterns = [
-        /^\/server\.js/i,
+        /^\/server\.(js|log)/i,
         /^\/package(-lock)?\.json/i,
         /^\/hashes\.json/i,
         /^\/\.env/i,
@@ -47,6 +47,16 @@ function isPathSafe(targetPath, baseDir) {
     const basePrefix = resolvedBase.endsWith(path.sep) ? resolvedBase : resolvedBase + path.sep;
     return resolvedTarget === resolvedBase || resolvedTarget.startsWith(basePrefix);
 }
+
+// 检查路径中是否包含隐藏文件/目录（以 . 开头），防止访问 .env、.git 等敏感文件
+function containsHiddenPart(filePath) {
+    if (!filePath) return false;
+    return filePath.split(/[\\/]/).some(part => part.startsWith('.'));
+}
+
+// 最大允许读取的文件大小（50MB），防止大文件导致内存/带宽耗尽
+const MAX_FILE_SIZE = 50 * 1024 * 1024;
+
 const SYNC_SERVER_URL = process.env.SYNC_SERVER_URL || ''; // 双向同步的远端服务器地址
 
 
@@ -116,8 +126,8 @@ app.get('/file-content', async (req, res) => {
     console.log('实际文件：', fileName);
     const sanitizedFileName = decodeURIComponent(fileName);
 
-    // 拒绝包含 null 字节或明显路径遍历特征的请求
-    if (sanitizedFileName.includes('\0') || sanitizedFileName.includes('..')) {
+    // 拒绝包含 null 字节、明显路径遍历特征或隐藏文件的请求
+    if (sanitizedFileName.includes('\0') || sanitizedFileName.includes('..') || containsHiddenPart(sanitizedFileName)) {
         return res.status(400).send('非法路径');
     }
 
@@ -129,6 +139,12 @@ app.get('/file-content', async (req, res) => {
     // 确保文件存在
     if (!fs.existsSync(filePath)) {
         return res.status(404).send('文件不存在');
+    }
+
+    // 限制文件大小，防止大文件导致内存/带宽耗尽
+    const fileStats = fs.statSync(filePath);
+    if (fileStats.size > MAX_FILE_SIZE) {
+        return res.status(413).send('文件过大');
     }
 
     console.log('实际文件路径：', filePath);
@@ -145,6 +161,51 @@ app.get('/file-content', async (req, res) => {
         }
         res.send(data);
     });
+});
+
+// 获取 Markdown/文本文件关联的本地资源（如图片）
+app.get('/file-asset', (req, res) => {
+    // 如果是仅进度服务器模式，返回错误
+    if (PROGRESS_ONLY) {
+        return res.status(503).json({ error: '此服务器仅提供阅读进度服务，不提供内容服务' });
+    }
+
+    const fileName = req.query.file;
+    const assetName = req.query.asset;
+
+    if (!fileName || !assetName) {
+        return res.status(400).send('未提供文件或资源名');
+    }
+
+    const sanitizedFileName = decodeURIComponent(fileName);
+    const sanitizedAssetName = decodeURIComponent(assetName);
+
+    // 拒绝包含 null 字节、明显路径遍历特征或隐藏文件的请求
+    if (sanitizedFileName.includes('\0') || sanitizedFileName.includes('..') || containsHiddenPart(sanitizedFileName) ||
+        sanitizedAssetName.includes('\0') || sanitizedAssetName.includes('..') || containsHiddenPart(sanitizedAssetName)) {
+        return res.status(400).send('非法路径');
+    }
+
+    // 资源路径相对于引用它的文件所在目录
+    const fileDir = path.dirname(sanitizedFileName);
+    const assetPath = path.join(baseDirectory, fileDir, sanitizedAssetName);
+
+    if (!isPathSafe(assetPath, baseDirectory)) {
+        return res.status(400).send('非法路径');
+    }
+
+    // 确保资源存在
+    if (!fs.existsSync(assetPath)) {
+        return res.status(404).send('资源不存在');
+    }
+
+    // 限制资源文件大小
+    const assetStats = fs.statSync(assetPath);
+    if (assetStats.size > MAX_FILE_SIZE) {
+        return res.status(413).send('资源文件过大');
+    }
+
+    res.sendFile(assetPath);
 });
 
 // EPUB 缓存：存储解析后的章节信息
@@ -295,6 +356,12 @@ async function readEpubFile(filePath, res) {
         console.error('EPUB 文件不存在：', filePath);
         return res.status(404).send('EPUB 文件不存在');
     }
+
+    // 限制 EPUB 文件大小
+    const fileStats = fs.statSync(filePath);
+    if (fileStats.size > MAX_FILE_SIZE) {
+        return res.status(413).send('文件过大');
+    }
     
     try {
         const epubData = await parseEpubToCache(filePath);
@@ -327,6 +394,11 @@ app.get('/epub-info', async (req, res) => {
         return res.status(400).json({ error: '无效的 EPUB 文件名' });
     }
     
+    // 拒绝包含 null 字节、明显路径遍历特征或隐藏文件的请求
+    if (fileName.includes('\0') || fileName.includes('..') || containsHiddenPart(fileName)) {
+        return res.status(400).json({ error: '非法路径' });
+    }
+
     const filePath = path.join(baseDirectory, fileName);
     if (!isPathSafe(filePath, baseDirectory)) {
         return res.status(400).json({ error: '非法路径' });
@@ -335,6 +407,12 @@ app.get('/epub-info', async (req, res) => {
     // 确保文件存在
     if (!fs.existsSync(filePath)) {
         return res.status(404).json({ error: '文件不存在' });
+    }
+
+    // 限制 EPUB 文件大小
+    const fileStats = fs.statSync(filePath);
+    if (fileStats.size > MAX_FILE_SIZE) {
+        return res.status(413).json({ error: '文件过大' });
     }
 
     try {
@@ -377,6 +455,11 @@ app.get('/epub-content', async (req, res) => {
     if (!fileName || !fileName.toLowerCase().endsWith('.epub')) {
         return res.status(400).json({ error: '无效的 EPUB 文件名' });
     }
+
+    // 拒绝包含 null 字节、明显路径遍历特征或隐藏文件的请求
+    if (fileName.includes('\0') || fileName.includes('..') || containsHiddenPart(fileName)) {
+        return res.status(400).json({ error: '非法路径' });
+    }
     
     const filePath = path.join(baseDirectory, fileName);
     if (!isPathSafe(filePath, baseDirectory)) {
@@ -386,6 +469,12 @@ app.get('/epub-content', async (req, res) => {
     // 确保文件存在
     if (!fs.existsSync(filePath)) {
         return res.status(404).json({ error: '文件不存在' });
+    }
+
+    // 限制 EPUB 文件大小
+    const fileStats = fs.statSync(filePath);
+    if (fileStats.size > MAX_FILE_SIZE) {
+        return res.status(413).json({ error: '文件过大' });
     }
 
     try {

@@ -492,6 +492,46 @@
     }
 
     /**
+     * 判断资源路径是否为相对路径（非绝对路径、非协议URL）
+     * @param {string} src - 原始资源路径
+     * @returns {boolean}
+     */
+    function isRelativeAssetPath(src) {
+        if (!src) return false;
+        // 跳过协议URL (http://, https://, data:, blob:, file: 等)
+        if (/^[a-z][a-z0-9+.-]*:/i.test(src)) return false;
+        // 跳过以 / 开头的绝对路径和锚点
+        if (src.startsWith('/') || src.startsWith('#')) return false;
+        return true;
+    }
+
+    /**
+     * 将 Markdown/HTML 中的相对资源路径转换为服务器可访问的绝对路径
+     * @param {string} text - 原始文件内容
+     * @param {string} currentFileName - 当前阅读文件相对 PRO_DIR 的路径
+     * @returns {string} - 处理后的文本
+     */
+    function resolveImagePaths(text, currentFileName) {
+        if (!currentFileName) return text;
+
+        // 处理 Markdown 图片语法: ![alt](src "title")
+        text = text.replace(/!\[([^\]]*)\]\(([^)\s]+)(?:\s+["']([^"']*)["'])?\)/g, (match, alt, src, title) => {
+            if (!isRelativeAssetPath(src)) return match;
+            const newSrc = `/file-asset?file=${encodeURIComponent(currentFileName)}&asset=${encodeURIComponent(src)}`;
+            return title ? `![${alt}](${newSrc} "${title}")` : `![${alt}](${newSrc})`;
+        });
+
+        // 处理 HTML img 标签: <img src="..." ...>
+        text = text.replace(/<img([^>]*)src=["']([^"']+)["']([^>]*)>/gi, (match, before, src, after) => {
+            if (!isRelativeAssetPath(src)) return match;
+            const newSrc = `/file-asset?file=${encodeURIComponent(currentFileName)}&asset=${encodeURIComponent(src)}`;
+            return `<img${before}src="${newSrc}"${after}>`;
+        });
+
+        return text;
+    }
+
+    /**
      * 预处理文本，解决 Markdown 和 KaTeX 之间的冲突
      * @param {string} text - 原始文件内容
      * @returns {string} - 处理后的文本
@@ -884,8 +924,10 @@
                 const contentDiv = document.getElementById('content');
                 contentDiv.setAttribute('data-original-text', text);
                 
+                // 解析 Markdown/HTML 中的相对图片路径
+                const textWithResolvedImages = resolveImagePaths(text, fileName);
                 // 使用新的预处理函数
-                const processedText = preprocessText(text);
+                const processedText = preprocessText(textWithResolvedImages);
 
                 console.log('开始渲染内容');
                 parseMarkdownToHtml(processedText);
@@ -908,7 +950,8 @@
             .then(text => {
                 const contentDiv = document.getElementById('content');
                 contentDiv.setAttribute('data-original-text', text);
-                const processedText = preprocessText(text);
+                const textWithResolvedImages = resolveImagePaths(text, fileName);
+                const processedText = preprocessText(textWithResolvedImages);
                 parseMarkdownToHtml(processedText);
                 checkAndSendMiddlePIndex();
             })
@@ -918,16 +961,21 @@
             });
     }
 
-    // 简单的前端 HTML 清理：移除 script 标签和事件处理器，防止 XSS
+    // 前端 HTML 清理：移除危险标签、事件处理器和 javascript: 协议，防止 XSS
     function sanitizeHtml(html) {
         const parser = new DOMParser();
         const doc = parser.parseFromString(html, 'text/html');
-        // 移除所有 script 和 style 标签（style 虽然不算 XSS，但防止样式污染）
-        doc.querySelectorAll('script, style').forEach(el => el.remove());
-        // 移除所有 on* 事件属性
+        // 移除危险标签（可执行脚本、嵌入外部内容、表单、影响页面基础的标签）
+        const dangerousTags = ['script', 'style', 'iframe', 'object', 'embed', 'form', 'input', 'textarea', 'select', 'button', 'meta', 'base'];
+        dangerousTags.forEach(tag => {
+            doc.querySelectorAll(tag).forEach(el => el.remove());
+        });
+        // 移除危险属性和 javascript: 协议链接
         doc.querySelectorAll('*').forEach(el => {
             [...el.attributes].forEach(attr => {
-                if (attr.name.toLowerCase().startsWith('on')) {
+                const name = attr.name.toLowerCase();
+                const value = attr.value.toLowerCase();
+                if (name.startsWith('on') || value.startsWith('javascript:')) {
                     el.removeAttribute(attr.name);
                 }
             });

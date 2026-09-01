@@ -132,6 +132,32 @@
             justify-content: center;
         }
 
+        /* 最近阅读悬浮条（透明全宽，悬浮在页面最底部） */
+        #lastReadBar {
+            position: fixed;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            z-index: 1500;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 14px 16px;
+            background: rgba(255, 255, 255, 0.55);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border-top: 1px solid rgba(0, 0, 0, 0.08);
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: bold;
+            color: #000;
+            text-align: center;
+        }
+
+        #lastReadBar:hover {
+            background: rgba(255, 255, 255, 0.8);
+        }
+
 
     @media (prefers-color-scheme: dark) {
         .file-list a {
@@ -154,6 +180,16 @@
 
         .file-list .read-percent {
             color: #aaa;
+        }
+
+        #lastReadBar {
+            background: rgba(40, 40, 40, 0.6);
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            color: #fff;
+        }
+
+        #lastReadBar:hover {
+            background: rgba(40, 40, 40, 0.85);
         }
     }
     </style>
@@ -370,6 +406,81 @@
                     toggleSortMode();
                 }
             });
+
+            // -------------------------------------------------------------
+            // 最近阅读悬浮条（透明全宽，悬浮在页面最底部，点击继续阅读）
+            // -------------------------------------------------------------
+            // 从服务器获取最近阅读（跨设备统一，多个设备看到的是同一条）
+            async function fetchLastRead() {
+                try {
+                    const resp = await fetch('/recent-reads?limit=1');
+                    if (resp.ok) {
+                        const data = await resp.json();
+                        if (data.recentReads && data.recentReads.length > 0) {
+                            return data.recentReads[0];
+                        }
+                    }
+                } catch (e) {}
+                return null;
+            }
+
+            // 兼容旧数据/离线：服务器没有记录时，取本机最近的一条
+            function getLocalLastRead() {
+                try {
+                    const data = JSON.parse(localStorage.getItem('lastRead'));
+                    if (data && data.path && typeof data.timestamp === 'number') {
+                        return data;
+                    }
+                } catch (e) {}
+                let best = null;
+                for (let i = 0; i < localStorage.length; i++) {
+                    const key = localStorage.key(i);
+                    if (!key.startsWith('progress_')) continue;
+                    try {
+                        const data = JSON.parse(localStorage.getItem(key));
+                        if (data && typeof data.timestamp === 'number') {
+                            if (!best || data.timestamp > best.timestamp) {
+                                best = { path: key.slice('progress_'.length), timestamp: data.timestamp, percent: data.percent };
+                            }
+                        }
+                    } catch (e) {}
+                }
+                return best;
+            }
+
+            // 格式化文件名（与列表页显示规则一致）
+            function formatRecentName(path) {
+                const base = path.split('/').pop() || path;
+                return base.replace(/_/g, ' ').replace(/--/g, ' ').replace(/\.txt$/g, '').replace(/\.md$/g, '').replace(/\.epub$/i, '').replace(/——/g, ' ');
+            }
+
+            async function showLastReadBar() {
+                let lastRead = await fetchLastRead();
+                if (!lastRead) lastRead = getLocalLastRead();
+                if (!lastRead) return;
+
+                // 只显示文件名，超出 20 个字符则截断
+                const MAX_NAME_LENGTH = 40;
+                let name = formatRecentName(lastRead.path);
+                const chars = Array.from(name);
+                if (chars.length > MAX_NAME_LENGTH) {
+                    name = chars.slice(0, MAX_NAME_LENGTH).join('') + '…';
+                }
+
+                const bar = document.createElement('div');
+                bar.id = 'lastReadBar';
+                bar.title = '点击继续阅读';
+                bar.textContent = name;
+                bar.addEventListener('click', () => {
+                    window.location.href = 'file.html?name=' + encodeURIComponent(lastRead.path);
+                });
+                document.body.appendChild(bar);
+
+                // 给文件列表底部留出空间，避免被悬浮条遮挡
+                document.body.style.paddingBottom = '56px';
+            }
+
+            showLastReadBar();
         });
 
 

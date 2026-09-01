@@ -579,6 +579,16 @@ app.post('/log-middle-p-index', async (req, res) => { // 将路由处理函数�
             valueToStore = req.body.force ? incomingNum : Math.max(storedNum, incomingNum);
             hashes[hash] = valueToStore;
 
+            // 记录最近阅读（首页“最近阅读”悬浮条使用，随进度一起保存，跨设备统一）
+            if (!hashes.__recentReads__ || typeof hashes.__recentReads__ !== 'object') {
+                hashes.__recentReads__ = {};
+            }
+            const recentReadEntry = { path: fileName, timestamp: Date.now() };
+            if (typeof req.body.percent === 'number' && Number.isFinite(req.body.percent)) {
+                recentReadEntry.percent = req.body.percent;
+            }
+            hashes.__recentReads__[hash] = recentReadEntry;
+
             try {
                 // 使用 fsp.writeFile 而不是 fs.writeFile
                 await fsp.writeFile(HASHES_FILE, JSON.stringify(hashes, null, 2));
@@ -599,10 +609,14 @@ app.post('/log-middle-p-index', async (req, res) => { // 将路由处理函数�
 
     // 异步同步到远端服务器（不阻塞响应）
     if (SYNC_SERVER_URL && valueToStore !== undefined) {
+        const syncBody = { fileName, middlePIndex: valueToStore };
+        if (typeof req.body.percent === 'number' && Number.isFinite(req.body.percent)) {
+            syncBody.percent = req.body.percent;
+        }
         fetch(`${SYNC_SERVER_URL}/log-middle-p-index`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ fileName, middlePIndex: valueToStore })
+            body: JSON.stringify(syncBody)
         }).catch(err => {
             console.error('同步进度到远端失败:', err.message);
         });
@@ -659,6 +673,66 @@ app.get('/get-progress', async (req, res) => {
     res.json({ fileName, hash, progress: finalProgress });
 });
 
+// 获取最近阅读列表（首页“最近阅读”悬浮条使用，跨设备统一）
+app.get('/recent-reads', async (req, res) => {
+    const limit = Math.min(Math.max(parseInt(req.query.limit) || 1, 1), 20);
+
+    // 本地记录（hashes.json 中的 __recentReads__ 字段）
+    let localMap = {};
+    try {
+        const fileData = fs.readFileSync(HASHES_FILE, 'utf8');
+        const hashes = JSON.parse(fileData);
+        if (hashes.__recentReads__ && typeof hashes.__recentReads__ === 'object') {
+            localMap = hashes.__recentReads__;
+        }
+    } catch (err) {
+        if (err.code !== 'ENOENT') {
+            console.error('读取最近阅读数据时发生错误:', err);
+        }
+    }
+
+    // 远端记录（双向同步时合并）
+    let remoteMap = {};
+    if (SYNC_SERVER_URL) {
+        try {
+            const remoteRes = await fetch(`${SYNC_SERVER_URL}/recent-reads?limit=${limit}`);
+            if (remoteRes.ok) {
+                const data = await remoteRes.json();
+                if (Array.isArray(data.recentReads)) {
+                    data.recentReads.forEach(r => {
+                        if (r && r.path) {
+                            remoteMap[r.path] = r;
+                        }
+                    });
+                }
+            }
+        } catch (err) {
+            console.error('获取远端最近阅读失败:', err.message);
+        }
+    }
+
+    // 按文件合并，取时间戳较新的一条
+    const merged = {};
+    const mergeInto = (map) => {
+        for (const key of Object.keys(map)) {
+            const item = map[key];
+            if (!item || typeof item.path !== 'string' || typeof item.timestamp !== 'number') continue;
+            if (!merged[item.path] || item.timestamp > merged[item.path].timestamp) {
+                merged[item.path] = item;
+            }
+        }
+    };
+    mergeInto(localMap);
+    mergeInto(remoteMap);
+
+    const recentReads = Object.keys(merged)
+        .map(key => merged[key])
+        .sort((a, b) => b.timestamp - a.timestamp)
+        .slice(0, limit);
+
+    res.json({ recentReads });
+});
+
 // 获取服务器配置信息（供前端使用）
 app.get('/server-config', (req, res) => {
     res.json({
@@ -669,7 +743,7 @@ app.get('/server-config', (req, res) => {
 
 // 启动服务器
 const PORT = process.env.PORT || 3000;
-const HOST = process.env.HOST || 'localhost';
+const HOST = process.env.HOST || '0.0.0.0';
 
 app.listen(PORT, HOST, () => {
     console.log(`服务器已启动：http://${HOST}:${PORT}`);

@@ -429,6 +429,16 @@
             console.error('记录已访问文件失败:', e);
         }
 
+        // 记录最近阅读（首页底部悬浮条使用，只保存最近的一篇）
+        try {
+            localStorage.setItem('lastRead', JSON.stringify({
+                path: fileName,
+                timestamp: Date.now()
+            }));
+        } catch (e) {
+            console.error('记录最近阅读失败:', e);
+        }
+
         // 更新页面标题
         document.title = fileName.replace(/\.txt$/i, '').replace(/\.md$/i, '').replace(/\.epub$/i, '').trim();
 
@@ -1561,7 +1571,7 @@
         return null;
     }
 
-    // 缓存阅读进度到本地
+    // 缓存阅读进度到本地，并返回百分比（供上报时随进度一起保存）
     function cacheReadingProgress() {
         try {
             const percent = getCurrentReadingPercent();
@@ -1571,9 +1581,11 @@
                     timestamp: Date.now()
                 }));
             }
+            return percent;
         } catch (e) {
             console.error('缓存阅读进度失败:', e);
         }
+        return null;
     }
 
     // 保存翻页进度（保存当前页第一个段落索引到服务器）
@@ -1602,7 +1614,7 @@
         }
         
         console.log('翻页模式保存进度，段落索引:', paragraphIndex);
-        cacheReadingProgress();
+        const percent = cacheReadingProgress();
         
         try {
             const progressUrl = SERVER_CONFIG.progressOnly && SERVER_CONFIG.remoteServerUrl
@@ -1616,7 +1628,8 @@
                 },
                 body: JSON.stringify({
                     fileName: fileName,
-                    middlePIndex: paragraphIndex
+                    middlePIndex: paragraphIndex,
+                    percent: percent
                 })
             });
         } catch (error) {
@@ -1713,6 +1726,7 @@
         }
 
         console.log(fileName, "当前中间的 p 是第", middlePIndex, "个");
+        const percent = cacheReadingProgress();
 
         // 发送进度到当前服务器（保存进度）
         fetch('/log-middle-p-index', {
@@ -1722,13 +1736,13 @@
             },
             body: JSON.stringify({
                 fileName: fileName,
-                middlePIndex: middlePIndex
+                middlePIndex: middlePIndex,
+                percent: percent
             })
         })
         .then(response => response.json())
         .then(async data => {
             console.log('服务器响应:', data);
-            cacheReadingProgress();
 
             if (firstLoad) {
                 firstLoad = false;
@@ -1778,6 +1792,7 @@
         }
 
         console.log(fileName, "强制更新中间的 p 是第", middlePIndex, "个");
+        const percent = cacheReadingProgress();
 
         fetch('/log-middle-p-index', {
             method: 'POST',
@@ -1787,13 +1802,13 @@
             body: JSON.stringify({
                 fileName: fileName,
                 middlePIndex: middlePIndex,
-                force: true
+                force: true,
+                percent: percent
             })
         })
         .then(response => response.json())
         .then(data => {
             console.log('服务器响应:', data);
-            cacheReadingProgress();
             showToast('位置已更新');
         })
         .catch(error => console.error('发送数据失败:', error));

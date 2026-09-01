@@ -1,4 +1,29 @@
-const CACHE_NAME = 'txtreader-v2';
+const CACHE_NAME = 'txtreader-v3';
+
+// KaTeX 字体，离线时公式才能用正确字形渲染
+const KATEX_FONTS = [
+  'KaTeX_AMS-Regular',
+  'KaTeX_Caligraphic-Bold',
+  'KaTeX_Caligraphic-Regular',
+  'KaTeX_Fraktur-Bold',
+  'KaTeX_Fraktur-Regular',
+  'KaTeX_Main-Bold',
+  'KaTeX_Main-BoldItalic',
+  'KaTeX_Main-Italic',
+  'KaTeX_Main-Regular',
+  'KaTeX_Math-BoldItalic',
+  'KaTeX_Math-Italic',
+  'KaTeX_SansSerif-Bold',
+  'KaTeX_SansSerif-Italic',
+  'KaTeX_SansSerif-Regular',
+  'KaTeX_Script-Regular',
+  'KaTeX_Size1-Regular',
+  'KaTeX_Size2-Regular',
+  'KaTeX_Size3-Regular',
+  'KaTeX_Size4-Regular',
+  'KaTeX_Typewriter-Regular'
+].map((name) => `/lib/fonts/${name}.woff2`);
+
 const STATIC_ASSETS = [
   '/',
   '/index.html',
@@ -17,7 +42,8 @@ const STATIC_ASSETS = [
   '/web_icon/epub.svg',
   '/web_icon/sort.svg',
   '/web_icon/arrow.svg',
-  '/fonts/SarasaMonoSC-Regular.ttf'
+  '/fonts/SarasaMonoSC-Regular.ttf',
+  ...KATEX_FONTS
 ];
 
 // 安装时缓存静态资源

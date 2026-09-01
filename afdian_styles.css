@@ -1,3 +1,9 @@
+html {
+    /* 关掉移动端的字体自动放大，否则会打乱 KaTeX 的分数线、根号等定位 */
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+}
+
 body {
     font-size: 18px;
     font-family: Sarasa Mono SC, -apple-system, BlinkMacSystemFont, Helvetica Neue, Arial, PingFang SC, Hiragino Sans GB, Microsoft YaHei, WenQuanYi Micro Hei, sans-serif;
@@ -106,8 +112,35 @@ blockquote {
     display: none;
 }
 
-.katex-display {
+/* ---- 数学公式（KaTeX） ---- */
+/* 全局的 span { display: inline-block } 会打乱 KaTeX 的内部盒模型，
+   这里把公式内部没有被 KaTeX 显式指定的 span 还原成 inline */
+.katex span {
+    display: inline;
     margin: 0;
+}
+
+.katex {
+    font-size: 1.1em;   /* 默认 1.21em 相对等宽正文偏大 */
+}
+
+.katex-display {
+    margin: 0.9em 0;
+    padding: 0.15em 0;
+    overflow-x: auto;   /* 超长公式横向滚动，不撑破页面 */
+    overflow-y: hidden;
+}
+
+/* 列表、引用块里的块级公式收紧一点 */
+li > .katex-display,
+blockquote .katex-display {
+    margin: 0.5em 0;
+}
+
+/* 公式语法出错时的兜底显示 */
+.math-error {
+    color: #c0392b;
+    white-space: pre-wrap;
 }
 
 table {
@@ -181,6 +214,10 @@ background-color: #ffffff;
         background-color: #ccc; /* 设置选中文本的背景色 */
         color: #000;
       }
+
+    .math-error {
+        color: #ff7b72;
+    }
 }
 
 @media (max-width: 30em) {

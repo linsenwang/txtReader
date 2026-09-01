@@ -493,12 +493,191 @@
         });
     });
 
-    function fixLatexTextSubscripts(content) {
-        const regex = /\\text\{([^{}]+)\}_\{([^{}]+)\}/g;
-        const fixedContent = content.replace(regex, (match, textContent, subscript) => {
-            return `${textContent}_${subscript}`;
+    // ===== 数学公式渲染管线 =====
+    // 思路：Markdown 解析之前先把公式整段抽走，换成纯字母数字占位符；
+    // 解析并清洗 HTML 之后，再用 KaTeX 把公式渲染回原位。
+    // 这样 Markdown 不会吃掉 \\、_、* 等 LaTeX 语法，代码块里的 $ 也不会被误渲染。
+
+    const KATEX_OPTIONS = {
+        throwOnError: false,
+        errorColor: '#c0392b',
+        strict: 'ignore',
+        trust: false
+    };
+
+    function mathToken(index) {
+        return `KTXMATH${index}ENDKTXMATH`;
+    }
+
+    function escapeHtml(str) {
+        return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;');
+    }
+
+    /**
+     * 判断 $...$ 中间的内容是否像公式
+     * 主要用于排除 "$5 和 $10" 这类货币写法
+     */
+    function looksLikeMath(tex) {
+        if (!tex.trim()) return false;
+        // 夹着中文又没有任何 LaTeX 记号，基本可以判定是误匹配
+        if (/[\u4e00-\u9fa5]/.test(tex) && !/[\\^_{}]/.test(tex)) return false;
+        return true;
+    }
+
+    /**
+     * 引用块里的块级公式，每行会带 "> " 前缀，交给 KaTeX 之前要去掉
+     * @param {string} tex - 公式源码
+     * @param {string} text - 完整原文
+     * @param {number} start - 公式左分隔符在原文中的下标
+     */
+    function stripQuoteMarks(tex, text, start) {
+        if (!/(^|\n)[ \t]*>[ \t>]*$/.test(text.slice(0, start))) return tex;
+        return tex.replace(/^[ \t]*>[ \t]?/gm, '');
+    }
+
+    // 块级公式不允许跨空行，否则一个漏写的 $$ 会把后面整段文档都吞掉
+    function spansBlankLine(tex) {
+        return /\n[ \t]*\n/.test(tex);
+    }
+
+    /**
+     * 从原始文本中抽取数学公式，返回占位符文本和公式列表
+     * 会跳过围栏代码块、行内代码和 \$ 转义
+     */
+    function extractMath(text) {
+        const blocks = [];
+        let out = '';
+        let i = 0;
+        const n = text.length;
+
+        const push = (tex, display) => {
+            blocks.push({ tex, display });
+            return mathToken(blocks.length - 1);
+        };
+
+        while (i < n) {
+            const ch = text[i];
+
+            // 反斜杠：\[...\] 块级、\(...\) 行内，其余转义（含 \$）原样保留
+            if (ch === '\\') {
+                if (text[i + 1] === '[') {
+                    const end = text.indexOf('\\]', i + 2);
+                    if (end !== -1) {
+                        const tex = stripQuoteMarks(text.slice(i + 2, end), text, i);
+                        if (tex.trim() && !spansBlankLine(tex)) {
+                            out += push(tex, true);
+                            i = end + 2;
+                            continue;
+                        }
+                    }
+                }
+                if (text[i + 1] === '(') {
+                    const end = text.indexOf('\\)', i + 2);
+                    if (end !== -1) {
+                        out += push(text.slice(i + 2, end), false);
+                        i = end + 2;
+                        continue;
+                    }
+                }
+                out += text.slice(i, i + 2);
+                i += 2;
+                continue;
+            }
+
+            // 围栏代码块（``` 或 ~~~）整段跳过
+            if ((ch === '`' || ch === '~') && (i === 0 || text[i - 1] === '\n')) {
+                const fence = /^(`{3,}|~{3,})/.exec(text.slice(i));
+                if (fence) {
+                    const close = text.indexOf('\n' + fence[1], i + fence[1].length);
+                    let stop = n;
+                    if (close !== -1) {
+                        const lineEnd = text.indexOf('\n', close + 1);
+                        stop = lineEnd === -1 ? n : lineEnd;
+                    }
+                    out += text.slice(i, stop);
+                    i = stop;
+                    continue;
+                }
+            }
+
+            // 行内代码整段跳过
+            if (ch === '`') {
+                const ticks = /^(`+)/.exec(text.slice(i))[1];
+                const end = text.indexOf(ticks, i + ticks.length);
+                if (end !== -1) {
+                    out += text.slice(i, end + ticks.length);
+                    i = end + ticks.length;
+                    continue;
+                }
+            }
+
+            // 块级 $$ ... $$
+            if (ch === '$' && text[i + 1] === '$') {
+                const end = text.indexOf('$$', i + 2);
+                if (end !== -1) {
+                    const tex = stripQuoteMarks(text.slice(i + 2, end), text, i);
+                    if (tex.trim() && !spansBlankLine(tex)) {
+                        out += push(tex, true);
+                        i = end + 2;
+                        continue;
+                    }
+                }
+            }
+
+            // 行内 $ ... $：不跨空行，右分隔符后不能紧跟数字
+            if (ch === '$') {
+                const m = /^\$((?:[^$\\\n]|\\[\s\S]|\n(?!\s*\n))+?)\$(?!\d)/.exec(text.slice(i));
+                if (m && looksLikeMath(m[1])) {
+                    out += push(m[1], false);
+                    i += m[0].length;
+                    continue;
+                }
+            }
+
+            out += ch;
+            i++;
+        }
+
+        return { text: out, blocks };
+    }
+
+    // 用 KaTeX 渲染单条公式，失败时退回显示源码而不是整页崩掉
+    function renderTex(tex, display) {
+        const source = display ? `$$${tex}$$` : `$${tex}$`;
+        if (typeof katex === 'undefined') return escapeHtml(source);
+        try {
+            return katex.renderToString(tex.trim(), Object.assign({ displayMode: display }, KATEX_OPTIONS));
+        } catch (error) {
+            console.warn('KaTeX 渲染失败:', error);
+            return `<code class="math-error">${escapeHtml(source)}</code>`;
+        }
+    }
+
+    // 把 HTML 中的占位符换回渲染好的公式
+    function restoreMath(html, blocks) {
+        if (!blocks.length) return html;
+        return html.replace(/KTXMATH(\d+)ENDKTXMATH/g, (match, index) => {
+            const item = blocks[Number(index)];
+            return item ? renderTex(item.tex, item.display) : match;
         });
-        return fixedContent;
+    }
+
+    // 对已经在 DOM 里的内容（EPUB 服务端 HTML）就地渲染公式
+    function renderMathInDom(element) {
+        if (typeof renderMathInElement === 'undefined') return;
+        renderMathInElement(element, Object.assign({
+            delimiters: [
+                { left: '$$', right: '$$', display: true },
+                { left: '\\[', right: '\\]', display: true },
+                { left: '$', right: '$', display: false },
+                { left: '\\(', right: '\\)', display: false }
+            ],
+            ignoredTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code', 'option']
+        }, KATEX_OPTIONS));
     }
 
     /**
@@ -542,42 +721,34 @@
     }
 
     /**
-     * 预处理文本，解决 Markdown 和 KaTeX 之间的冲突
-     * @param {string} text - 原始文件内容
+     * 文本清理：仅对 .txt 转录稿生效
+     * Markdown 文件必须保留原有换行结构，否则表格、列表、代码块全会被破坏
+     * @param {string} text - 已经抽走公式的文本
+     * @param {string} name - 文件名，用于判断类型
      * @returns {string} - 处理后的文本
      */
-    function preprocessText(text) {
-        // 1. 保护数学公式块，防止段落处理破坏它们
-        const mathBlocks = [];
-        // 正则表达式匹配 $$...$$ 或 \[...\] 块。/s 标志让 . 匹配换行符。
-        const blockRegex = /(\$\$[\s\S]*?\$\$|\\\[[\s\S]*?\\\])/g;
-        
-        let processedText = text.replace(blockRegex, (match) => {
-            mathBlocks.push(match);
-            // 使用一个不会在普通文本中出现的唯一占位符
-            return `__MATH_BLOCK_${mathBlocks.length - 1}__`;
-        });
-
-        // 2. 现在可以安全地处理段落、内联公式和其它清理工作
-        processedText = processedText
-            .replace(/\\\(/g, '$')      // 将 \(` 替换为 `$`
-            .replace(/\\\)/g, '$')      // 将 `\) 替换为 `$`
-            .replace(/\n+/g, '\n\n')    // 将多个换行替换为两个换行 (现在是安全的)
+    function cleanupPlainText(text, name) {
+        if (/\.(md|markdown)$/i.test(name || '')) {
+            return text.trim();
+        }
+        return text
+            .replace(/\n+/g, '\n\n')    // 转录稿按单行分段
             .replace(/\[音乐\]|\[掌声\]|（掌声）|（音乐）|【音乐】|【掌声】/g, '')
             .replace(/^>>\s?/gm, '')
             .trim();
+    }
 
-        // 3. 恢复数学公式块
-        processedText = processedText.replace(/__MATH_BLOCK_(\d+)__/g, (match, index) => {
-            // 在恢复时，顺便统一块级公式的分隔符为 $$
-            let block = mathBlocks[parseInt(index, 10)];
-            return block.replace(/\\\[/g, '$$').replace(/\\\]/g, '$$');
-        });
-        
-        // 4. 对恢复后的完整文本进行最后的 LaTeX 修正
-        processedText = fixLatexTextSubscripts(processedText);
-
-        return processedText;
+    /**
+     * 原始文本 -> 可直接塞进 DOM 的 HTML
+     * 顺序：解析图片路径 -> 抽走公式 -> 文本清理 -> Markdown -> 清洗 -> 渲染公式
+     * @param {string} rawText - 原始文件内容
+     * @returns {string} - 渲染好的 HTML
+     */
+    function buildContentHtml(rawText) {
+        const withAssets = resolveImagePaths(rawText, fileName);
+        const extracted = extractMath(withAssets);
+        const cleaned = cleanupPlainText(extracted.text, fileName);
+        return restoreMath(sanitizeHtml(marked.parse(cleaned)), extracted.blocks);
     }
 
     // 检查是否为 EPUB 文件
@@ -672,16 +843,7 @@
         });
         
         // 渲染数学公式
-        if (typeof renderMathInElement !== 'undefined') {
-            renderMathInElement(contentDiv, {
-                delimiters: [
-                    { left: "$$", right: "$$", display: true },
-                    { left: "$", right: "$", display: false },
-                    { left: "\\[", right: "\\]", display: true },
-                    { left: "\\(", right: "\\)", display: false }
-                ]
-            });
-        }
+        renderMathInDom(contentDiv);
         
         // 如果是翻页模式，需要重新分页
         if (isPaginated) {
@@ -727,16 +889,7 @@
         }
         
         // 渲染数学公式
-        if (typeof renderMathInElement !== 'undefined') {
-            renderMathInElement(contentDiv, {
-                delimiters: [
-                    { left: "$$", right: "$$", display: true },
-                    { left: "$", right: "$", display: false },
-                    { left: "\\[", right: "\\]", display: true },
-                    { left: "\\(", right: "\\)", display: false }
-                ]
-            });
-        }
+        renderMathInDom(contentDiv);
         
         // 恢复滚动位置，避免页面跳动
         if (firstElementId) {
@@ -933,14 +1086,9 @@
                 // 保存原始文本以便切换模式时重新渲染
                 const contentDiv = document.getElementById('content');
                 contentDiv.setAttribute('data-original-text', text);
-                
-                // 解析 Markdown/HTML 中的相对图片路径
-                const textWithResolvedImages = resolveImagePaths(text, fileName);
-                // 使用新的预处理函数
-                const processedText = preprocessText(textWithResolvedImages);
 
                 console.log('开始渲染内容');
-                parseMarkdownToHtml(processedText);
+                parseMarkdownToHtml(text);
                 checkAndSendMiddlePIndex();
             })
             .catch(error => {
@@ -960,9 +1108,7 @@
             .then(text => {
                 const contentDiv = document.getElementById('content');
                 contentDiv.setAttribute('data-original-text', text);
-                const textWithResolvedImages = resolveImagePaths(text, fileName);
-                const processedText = preprocessText(textWithResolvedImages);
-                parseMarkdownToHtml(processedText);
+                parseMarkdownToHtml(text);
                 checkAndSendMiddlePIndex();
             })
             .catch(error => {
@@ -1003,27 +1149,21 @@
             return;
         }
 
-        const html = sanitizeHtml(marked.parse(text));
-        console.log('生成的 HTML 内容：', html);
-        contentDiv.innerHTML = html;
+        contentDiv.innerHTML = buildContentHtml(text);
 
-        contentDiv.querySelectorAll('*').forEach((el, index) => {
-            el.id = `${index + 1}`;
+        // 单独成段的块级公式从 <p> 里解包，避免段落 margin 和公式 margin 叠加
+        contentDiv.querySelectorAll('p > .katex-display').forEach(node => {
+            const p = node.parentElement;
+            const meaningful = Array.from(p.childNodes)
+                .filter(n => n.nodeType !== Node.TEXT_NODE || n.textContent.trim());
+            if (meaningful.length === 1) p.replaceWith(node);
         });
 
-        if (typeof renderMathInElement === 'undefined') {
-            console.error('renderMathInElement 函数未定义');
-            return;
-        }
-        
-        renderMathInElement(contentDiv, {
-            delimiters: [
-                { left: "$$", right: "$$", display: true },
-                { left: "$", right: "$", display: false },
-                // 下面两行现在是备用，因为我们已经预处理为 $$
-                { left: "\\[", right: "\\]", display: true },
-                { left: "\\(", right: "\\)", display: false }
-            ]
+        // 给元素编号用于记录阅读位置，跳过 KaTeX 生成的内部节点
+        let seq = 0;
+        contentDiv.querySelectorAll('*').forEach(el => {
+            if (el.closest('.katex') || el.closest('.katex-display')) return;
+            el.id = `${++seq}`;
         });
         
         // 渲染完成后，如果是翻页模式则进行分页（带进度恢复）
@@ -1175,11 +1315,13 @@
         
         console.log('分页参数:', { pageHeight, lineHeight, linesPerPage, charsPerLine });
         
-        // 保存原始内容
+        // 保存原始内容（含公式的元素记下实测高度，textContent 会把 MathML 文本重复计入）
         const elementsToPaginate = originalElements.map(el => ({
             el: el.cloneNode(true),
             tagName: el.tagName.toLowerCase(),
-            text: el.textContent
+            text: el.textContent,
+            hasMath: el.classList.contains('katex-display') || !!el.querySelector('.katex'),
+            height: el.getBoundingClientRect().height
         }));
         
         contentDiv.innerHTML = '';
@@ -1193,11 +1335,14 @@
         let currentPageLines = 0;
         
         for (let i = 0; i < elementsToPaginate.length; i++) {
-            const { el, tagName, text } = elementsToPaginate[i];
+            const { el, tagName, text, hasMath, height } = elementsToPaginate[i];
             
             let elementLines = 0;
             
-            if (tagName === 'p') {
+            if (hasMath) {
+                // 公式按渲染后的实际高度折算行数
+                elementLines = Math.max(1, Math.ceil(height / lineHeight)) + 1;
+            } else if (tagName === 'p') {
                 elementLines = calculateTextLines(text, charsPerLine);
                 elementLines += 1;
             } else if (tagName.match(/^h[1-6]$/)) {
@@ -1219,7 +1364,7 @@
                 currentPageDiv.appendChild(el);
                 currentPageLines += elementLines;
             }
-            else if (tagName === 'p' && text.length > 30) {
+            else if (tagName === 'p' && text.length > 30 && !hasMath) {
                 const remainingLines = linesPerPage - currentPageLines;
                 const linesNeeded = elementLines - 1;
                 
@@ -1465,8 +1610,7 @@
             if (!EPUB_LOADER.isEpub) {
                 const text = contentDiv.getAttribute('data-original-text') || '';
                 if (text) {
-                    const processedText = preprocessText(text);
-                    parseMarkdownToHtmlSimple(processedText);
+                    parseMarkdownToHtmlSimple(text);
                 }
             }
             
@@ -1487,24 +1631,7 @@
     
     // 简化的渲染（用于切换回滚动模式）
     function parseMarkdownToHtmlSimple(text) {
-        const contentDiv = document.getElementById('content');
-        contentDiv.innerHTML = '';
-        
-        const html = marked.parse(text);
-        contentDiv.innerHTML = html;
-        
-        contentDiv.querySelectorAll('*').forEach((el, index) => {
-            el.id = `${index + 1}`;
-        });
-        
-        renderMathInElement(contentDiv, {
-            delimiters: [
-                { left: "$$", right: "$$", display: true },
-                { left: "$", right: "$", display: false },
-                { left: "\\[", right: "\\]", display: true },
-                { left: "\\(", right: "\\)", display: false }
-            ]
-        });
+        parseMarkdownToHtml(text);
     }
     
     // 计算当前阅读百分比（统一基于段落数）

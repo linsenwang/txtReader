@@ -409,6 +409,54 @@
         }
     });
 
+    // 复制文档内容时还原公式源码，避免 KaTeX 生成的 DOM 文本重复
+    function getSelectedContentText(selection, contentDiv) {
+        const originalText = contentDiv.getAttribute('data-original-text');
+        const contentRange = document.createRange();
+        contentRange.selectNodeContents(contentDiv);
+        const selectedRange = selection.getRangeAt(0);
+
+        // Cmd/Ctrl+A 选中全文时，直接返回完整的原始 Markdown。
+        if (originalText !== null &&
+            selectedRange.compareBoundaryPoints(Range.START_TO_START, contentRange) <= 0 &&
+            selectedRange.compareBoundaryPoints(Range.END_TO_END, contentRange) >= 0) {
+            return originalText;
+        }
+
+        // 其他情况只复制选区，并把选区内的 KaTeX 节点替换成 LaTeX 源码。
+        const fragment = selectedRange.cloneContents();
+        const replaceMathNode = (mathNode, display) => {
+            const annotation = mathNode.querySelector('annotation[encoding="application/x-tex"]');
+            if (annotation) {
+                mathNode.replaceWith(document.createTextNode(`${display ? '$$' : '$'}${annotation.textContent}${display ? '$$' : '$'}`));
+            }
+        };
+        if (fragment.matches?.('.katex-display')) replaceMathNode(fragment, true);
+        if (fragment.matches?.('.katex')) replaceMathNode(fragment, false);
+        fragment.querySelectorAll('.katex-display').forEach(mathNode => replaceMathNode(mathNode, true));
+        fragment.querySelectorAll('.katex').forEach(mathNode => replaceMathNode(mathNode, false));
+        return fragment.textContent;
+    }
+
+    function copyOriginalMarkdown(event) {
+        const selection = window.getSelection();
+        const contentDiv = document.getElementById('content');
+        if (!selection || selection.isCollapsed || !contentDiv || !event.clipboardData) return;
+
+        const selectionInContent = contentDiv.contains(selection.anchorNode) ||
+            contentDiv.contains(selection.focusNode);
+        if (!selectionInContent || contentDiv.getAttribute('data-original-text') === null) return;
+
+        const selectedText = getSelectedContentText(selection, contentDiv);
+        if (!selectedText) return;
+
+        event.preventDefault();
+        event.clipboardData.setData('text/plain', selectedText);
+        event.clipboardData.setData('text/html', `<pre>${escapeHtml(selectedText)}</pre>`);
+    }
+
+    document.addEventListener('copy', copyOriginalMarkdown);
+
     document.addEventListener('DOMContentLoaded', function() {
         const urlParams = new URLSearchParams(window.location.search);
         fileName = urlParams.get('name');

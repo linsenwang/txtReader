@@ -1853,6 +1853,11 @@
 
     let firstLoad = true;
 
+    // 事件驱动保存：位置变化去重 + 滚动停止防抖
+    let lastSavedMiddlePIndex = null;    // 上次已上报的段落索引（相同则跳过，避免空请求）
+    let scrollStopTimer = null;          // 滚动停止防抖定时器
+    const SAVE_SCROLL_DEBOUNCE_MS = 800; // 停止滚动多久后保存进度
+
     // 从服务器获取阅读进度
     async function fetchReadingProgress() {
         try {
@@ -1900,6 +1905,12 @@
             return;
         }
 
+        // 位置没变化就不重复上报（事件驱动下省资源的关键：不滚动就不发请求）
+        if (middlePIndex === lastSavedMiddlePIndex) {
+            return;
+        }
+        lastSavedMiddlePIndex = middlePIndex;
+
         console.log(fileName, "当前中间的 p 是第", middlePIndex, "个");
         const percent = cacheReadingProgress();
 
@@ -1936,17 +1947,83 @@
         .catch(error => console.error('发送数据失败:', error));
     }
 
-    // 页面加载后等待DOM渲染完成再执行首次检查
-    document.addEventListener('DOMContentLoaded', () => {
-            // 首次滚动定位需要一点延迟，确保所有内容（特别是KaTeX）渲染完毕
-        setTimeout(() => {
-            // 首次加载时，我们只关心滚动到上次的位置，不发送新位置
-            // checkAndSendMiddlePIndex 会处理这个逻辑
-        }, 500);
+    // 事件驱动保存阅读进度（替代原来的每 3 秒轮询）：
+    // 1) 滚动停止后（防抖）保存；位置没变时由 checkAndSendMiddlePIndex 内部去重跳过
+    window.addEventListener('scroll', () => {
+        if (isPaginated) return; // 翻页模式由 goToPage 实时保存
+        if (scrollStopTimer) clearTimeout(scrollStopTimer);
+        scrollStopTimer = setTimeout(() => {
+            scrollStopTimer = null;
+            checkAndSendMiddlePIndex();
+        }, SAVE_SCROLL_DEBOUNCE_MS);
+    }, { passive: true });
+
+    // 2) 页面转入后台（切走/最小化）时立即保存一次，避免落在 800ms 防抖窗口内的位置丢失
+    document.addEventListener('visibilitychange', () => {
+        if (document.hidden) {
+            flushReadingProgress(false);
+        }
     });
 
-    // 每 3 秒执行一次
-    setInterval(checkAndSendMiddlePIndex, 3000);
+    // 3) 关闭/刷新页面时用 sendBeacon 尽力补发最后一次位置
+    window.addEventListener('pagehide', () => {
+        flushReadingProgress(true);
+    });
+
+    // 页面离开前兜底保存（onUnload=true 走 beacon，普通 fetch 在卸载时可能来不及发出）
+    function flushReadingProgress(onUnload) {
+        if (isPaginated) {
+            // 翻页模式下每次翻页已随 goToPage 实时保存，这里只需在关页时补发当前页
+            if (onUnload) {
+                const paragraphIndex = getCurrentParagraphIndex();
+                if (paragraphIndex !== null && Number.isFinite(paragraphIndex)) {
+                    sendProgressBeacon(paragraphIndex, getCurrentReadingPercent());
+                }
+            }
+            return;
+        }
+
+        // 滚动模式：转入后台时与普通保存共用去重逻辑（位置没变就不发）
+        if (!onUnload) {
+            checkAndSendMiddlePIndex();
+            return;
+        }
+
+        // 关页前计算当前位置并 beacon 发送
+        let middlePIndex;
+        if (EPUB_LOADER.isEpub) {
+            middlePIndex = getMiddleParagraphIndex();
+        } else {
+            const id = getMiddlePIndex();
+            middlePIndex = id !== null ? parseInt(id, 10) : null;
+        }
+        if (middlePIndex === null || !Number.isFinite(middlePIndex)) return;
+        sendProgressBeacon(middlePIndex, getCurrentReadingPercent());
+    }
+
+    // 用 sendBeacon 发送进度（页面卸载时请求不会被浏览器取消）
+    function sendProgressBeacon(middlePIndex, percent) {
+        const url = SERVER_CONFIG.progressOnly && SERVER_CONFIG.remoteServerUrl
+            ? `${SERVER_CONFIG.remoteServerUrl}/log-middle-p-index`
+            : '/log-middle-p-index';
+        const body = { fileName, middlePIndex };
+        if (typeof percent === 'number' && Number.isFinite(percent)) {
+            body.percent = percent;
+        }
+        const payload = JSON.stringify(body);
+
+        if (navigator.sendBeacon) {
+            const ok = navigator.sendBeacon(url, new Blob([payload], { type: 'application/json' }));
+            if (ok) return; // 入队成功
+        }
+        // sendBeacon 不可用或被拒时退化为 keepalive fetch
+        fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: payload,
+            keepalive: true
+        }).catch(error => console.error('离开页面时保存进度失败:', error));
+    }
 
     function forceUpdateMiddlePIndex() {
         // 翻页模式下保存页码

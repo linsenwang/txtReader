@@ -360,6 +360,13 @@ background-color: #ffffff;
   display: none !important;
   }
 
+  /* KaTeX 的伸缩括号（\left[ \right] 之类）是用内联 <svg> 画的，
+     上面那条 !important 会连它们一起藏掉，打印出来矩阵就没有方括号、
+     行高也会跟着塌掉，所以这里必须把 .katex 里的 svg 放回来 */
+  .katex svg {
+  display: block !important;   /* 与 katex.min.css 中的 display 保持一致 */
+  }
+
   /* ---- 选中色在纸上没意义，顺手覆盖 ---- */
   ::selection {
   background: transparent;

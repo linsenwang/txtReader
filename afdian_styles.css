@@ -193,11 +193,11 @@ background-color: #ffffff;
     th {
     background-color: #121212;
     }
-    
+
     tr:nth-child(odd) {
     background-color: #121212;
     }
-    
+
     tr:nth-child(even) {
     background-color: #121212;
     }
@@ -226,3 +226,143 @@ background-color: #ffffff;
     }
   }
 
+  @media print {
+  /* 打印时用纸张自己的页边距，别让 body 去挤 */
+  @page {
+  margin: 1.5cm 1.8cm;
+  }
+
+  html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  }
+
+  /* ---- 覆盖暗色模式，强制白底黑字 ---- */
+  body {
+  background: #fff !important;
+  color: #000 !important;
+  font-size: 11pt;
+  line-height: 1.5;
+  max-width: none;   /* 25em 在 A4 上太窄，交给纸张决定 */
+  margin: 0;         /* 干掉 13em 的上下留白 */
+  }
+
+  /* ---- 链接：黑白打印看不出颜色，把 URL 附在后面 ---- */
+  a {
+  color: #000 !important;
+  font-weight: 500;
+  text-decoration: underline;
+  }
+
+  a[href^="http"]::after {
+  content: " (" attr(href) ")";
+  font-size: 0.85em;
+  color: #555;
+  word-break: break-all;
+  }
+
+  /* 站内锚点、相对链接不追加，避免满屏 URL */
+  a[href^="#"]::after,
+  a[href^="/"]::after {
+  content: "";
+  }
+
+  /* ---- 标题前的装饰竖线在纸面上没有意义 ---- */
+  h1::before,
+  h2::before,
+  h3::before,
+  h4::before {
+  content: "";
+  }
+
+  h1, h2, h3, h4 {
+  page-break-after: avoid;   /* 标题不单独落在页尾 */
+  break-after: avoid;
+  }
+
+  /* ---- 段落：解除滚动，避免长行被裁掉 ---- */
+  p {
+  overflow: visible !important;
+  orphans: 3;
+  widows: 3;
+  }
+
+  /* ---- 代码 ---- */
+  code {
+  background: #f2f2f2 !important;
+  color: #000 !important;
+  }
+
+  pre {
+  background: #f7f7f7 !important;
+  color: #000 !important;
+  border: 1px solid #ddd;
+  overflow: visible !important;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  page-break-inside: avoid;
+  break-inside: avoid;
+  }
+
+  /* ---- 引用 ---- */
+  blockquote {
+  border-left-color: #999;
+  color: #333;
+  page-break-inside: avoid;
+  break-inside: avoid;
+  }
+
+  /* ---- 表格：加边框，黑白打印才分得清行列 ---- */
+  table {
+  border-collapse: collapse;
+  page-break-inside: avoid;
+  break-inside: avoid;
+  }
+
+  th, td {
+  border: 1px solid #999;
+  padding: 0.25em 0.6em;
+  background: #fff !important;
+  }
+
+  tr:nth-child(odd),
+  tr:nth-child(even) {
+  background: #fff !important;   /* 斑马纹转成灰底会糊，直接去掉 */
+  }
+
+  /* ---- 图片：不限高，按比例缩放，别被裁 ---- */
+  img {
+  width: auto;
+  max-width: 100%;
+  height: auto;
+  page-break-inside: avoid;
+  break-inside: avoid;
+  }
+
+  figure {
+  page-break-inside: avoid;
+  break-inside: avoid;
+  }
+
+  /* ---- 数学公式：不要横向滚动，直接完整显示 ---- */
+  .katex-display {
+  overflow: visible !important;
+  page-break-inside: avoid;
+  break-inside: avoid;
+  }
+
+  /* ---- 隐藏交互 / 装饰元素 ---- */
+  video,
+  svg,
+  .LinkCard-image,
+  .ztext-empty-paragraph {
+  display: none !important;
+  }
+
+  /* ---- 选中色在纸上没意义，顺手覆盖 ---- */
+  ::selection {
+  background: transparent;
+  color: inherit;
+  }
+  }

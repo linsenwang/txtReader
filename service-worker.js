@@ -86,6 +86,7 @@ self.addEventListener('fetch', (event) => {
     url.pathname.startsWith('/file-content') ||
     url.pathname.startsWith('/log-middle-p-index') ||
     url.pathname.startsWith('/get-progress') ||
+    url.pathname.startsWith('/recent-reads') ||
     url.pathname.startsWith('/server-config') ||
     url.hostname !== self.location.hostname
   ) {

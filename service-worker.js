@@ -1,6 +1,6 @@
 // 静态资源有改动就要把这个版本号往上加，否则装了 service worker 的客户端
 // 会一直用缓存里的旧文件（cache-first），改了 CSS 也看不到效果
-const CACHE_NAME = 'txtreader-v4';
+const CACHE_NAME = 'txtreader-v6';
 
 // KaTeX 字体，离线时公式才能用正确字形渲染
 const KATEX_FONTS = [
@@ -89,6 +89,8 @@ self.addEventListener('fetch', (event) => {
     url.pathname.startsWith('/log-middle-p-index') ||
     url.pathname.startsWith('/get-progress') ||
     url.pathname.startsWith('/recent-reads') ||
+    url.pathname.startsWith('/read-files') ||
+    url.pathname.startsWith('/mark-read') ||
     url.pathname.startsWith('/server-config') ||
     url.hostname !== self.location.hostname
   ) {

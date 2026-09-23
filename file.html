@@ -457,6 +457,25 @@
 
     document.addEventListener('copy', copyOriginalMarkdown);
 
+    // 上报已读状态到服务器（首页文件列表置灰使用，跨设备统一）
+    async function markFileAsRead(name) {
+        try {
+            const url = SERVER_CONFIG.progressOnly && SERVER_CONFIG.remoteServerUrl
+                ? `${SERVER_CONFIG.remoteServerUrl}/mark-read`
+                : '/mark-read';
+
+            await fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ fileName: name })
+            });
+        } catch (error) {
+            console.error('上报已读状态失败:', error);
+        }
+    }
+
     document.addEventListener('DOMContentLoaded', function() {
         const urlParams = new URLSearchParams(window.location.search);
         fileName = urlParams.get('name');
@@ -466,7 +485,7 @@
             return;
         }
 
-        // 记录已访问文件
+        // 记录已读（服务器维护，跨设备同步；本机 localStorage 仅作离线兜底）
         try {
             const visitedFiles = JSON.parse(localStorage.getItem('visitedFiles') || '[]');
             if (!visitedFiles.includes(fileName)) {
@@ -476,6 +495,7 @@
         } catch (e) {
             console.error('记录已访问文件失败:', e);
         }
+        markFileAsRead(fileName);
 
         // 记录最近阅读（首页底部悬浮条使用，只保存最近的一篇）
         try {

@@ -733,6 +733,103 @@ app.get('/recent-reads', async (req, res) => {
     res.json({ recentReads });
 });
 
+// 标记文件为已读（首页文件列表置灰使用，随进度一起保存在服务器，跨设备统一）
+app.post('/mark-read', async (req, res) => {
+    const fileName = req.body ? req.body.fileName : null;
+
+    if (!fileName || typeof fileName !== 'string' || fileName.length > 1024) {
+        return res.status(400).json({ error: '缺少或非法的文件名' });
+    }
+
+    try {
+        await fileMutex.runExclusive(async () => {
+            let hashes = {};
+
+            try {
+                const fileData = await fsp.readFile(HASHES_FILE, 'utf8');
+                if (fileData) {
+                    hashes = JSON.parse(fileData);
+                }
+            } catch (err) {
+                if (err.code === 'ENOENT') {
+                    console.log(`${HASHES_FILE} 文件不存在，将创建新文件。`);
+                } else {
+                    console.error(`读取 ${HASHES_FILE} 文件时发生错误:`, err);
+                }
+            }
+
+            if (!hashes.__readFiles__ || typeof hashes.__readFiles__ !== 'object') {
+                hashes.__readFiles__ = {};
+            }
+            // 已经记过就保留最早的一次阅读时间
+            if (!hashes.__readFiles__[fileName]) {
+                hashes.__readFiles__[fileName] = { path: fileName, timestamp: Date.now() };
+            }
+
+            await fsp.writeFile(HASHES_FILE, JSON.stringify(hashes, null, 2));
+        });
+        res.json({ message: '已记录', fileName });
+    } catch (err) {
+        console.error('记录已读文件时发生错误:', err);
+        if (!res.headersSent) {
+            res.status(500).json({ error: '保存数据时发生错误' });
+        }
+    }
+
+    // 异步同步到远端服务器（不阻塞响应）
+    if (SYNC_SERVER_URL) {
+        fetch(`${SYNC_SERVER_URL}/mark-read`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ fileName })
+        }).catch(err => {
+            console.error('同步已读记录到远端失败:', err.message);
+        });
+    }
+});
+
+// 获取已读文件列表（首页文件列表置灰使用，跨设备统一）
+app.get('/read-files', async (req, res) => {
+    const merged = new Set();
+
+    // 本地记录（hashes.json 中的 __readFiles__ 字段）
+    try {
+        const fileData = fs.readFileSync(HASHES_FILE, 'utf8');
+        const hashes = JSON.parse(fileData);
+        const localMap = hashes.__readFiles__;
+        if (localMap && typeof localMap === 'object') {
+            Object.keys(localMap).forEach(key => {
+                const item = localMap[key];
+                const filePath = item && typeof item.path === 'string' ? item.path : null;
+                if (filePath) merged.add(filePath);
+            });
+        }
+    } catch (err) {
+        if (err.code !== 'ENOENT') {
+            console.error('读取已读文件数据时发生错误:', err);
+        }
+    }
+
+    // 远端记录（双向同步时合并）
+    if (SYNC_SERVER_URL) {
+        try {
+            const remoteRes = await fetch(`${SYNC_SERVER_URL}/read-files`);
+            if (remoteRes.ok) {
+                const data = await remoteRes.json();
+                if (Array.isArray(data.readFiles)) {
+                    data.readFiles.forEach(filePath => {
+                        if (typeof filePath === 'string' && filePath) merged.add(filePath);
+                    });
+                }
+            }
+        } catch (err) {
+            console.error('获取远端已读文件失败:', err.message);
+        }
+    }
+
+    res.json({ readFiles: Array.from(merged) });
+});
+
 // 获取服务器配置信息（供前端使用）
 app.get('/server-config', (req, res) => {
     res.json({

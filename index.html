@@ -199,7 +199,9 @@
     <button id="toggleSortMode" title="切换排序"><img src="web_icon/sort.svg" class="folder_icon"></button>
     <!-- 文件列表 -->
     <div class="file-list" id="fileList">
-        <!-- 文件列表将插入在这里 -->
+        <!-- 文件列表分批渲染，滑到底部由 sentinel 触发下一批 -->
+        <ul></ul>
+        <div id="loadMoreSentinel"></div>
     </div>
 
     <!-- 引入必要的库 -->
@@ -271,7 +273,26 @@
             let allFiles = [];
             const currentDir = dir;
 
-            const visitedFiles = new Set(JSON.parse(localStorage.getItem('visitedFiles') || '[]'));
+            // 已读文件由服务器维护（跨设备统一），网络异常时退回本机记录
+            let visitedFiles = new Set();
+
+            async function loadVisitedFiles() {
+                try {
+                    const resp = await fetch('/read-files');
+                    if (resp.ok) {
+                        const data = await resp.json();
+                        (data.readFiles || []).forEach(p => {
+                            if (typeof p === 'string') visitedFiles.add(p);
+                        });
+                    }
+                } catch (e) {
+                    console.error('获取已读文件列表失败:', e);
+                }
+                // 兼容旧数据/离线：本机记录过的文件同样视为已读
+                try {
+                    JSON.parse(localStorage.getItem('visitedFiles') || '[]').forEach(p => visitedFiles.add(p));
+                } catch (e) {}
+            }
 
             function getFilePercent(filePath) {
                 try {
@@ -286,11 +307,66 @@
                 return null;
             }
 
+            const BATCH_SIZE = 50; // 一次渲染的条目数，滑到底部再渲染下一批
+            let sortedFiles = [];  // 当前排序后的完整列表
+            let renderedCount = 0; // 已渲染的条目数
+
+            // 生成单条列表项的 HTML
+            function buildFileItem(file) {
+                const fileName = file.name;
+                const moFileName = file.name.replace(/_/g, ' ').replace(/--/g, ' ').replace(/\.txt$/g, '').replace(/\.md$/g, '').replace(/\.epub$/i, '').replace(/——/g, ' ');
+                const mtime = new Date(file.mtime).toLocaleString().replace(/,/g, ' '); // 格式化日期
+                const fullPath = (currentDir && currentDir !== '' ? currentDir + '/' : '') + fileName;
+                const isVisited = visitedFiles.has(fullPath);
+                const percent = getFilePercent(fullPath);
+                const visitedClass = isVisited ? 'visited' : '';
+                const percentHtml = percent !== null ? `<span class="read-percent"> 已读 ${percent}%</span>` : '';
+                if (fileName.toLowerCase().endsWith('.epub')) {
+                    return `<li class="file epub ${visitedClass}"><a href="file.html?name=${encodeURIComponent(fullPath)}"><img src="web_icon/epub.svg" class='folder_icon'>${escapeHtml(moFileName)}</a><span class="mtime">${mtime}${percentHtml}</span></li>`;
+                } else if (fileName.endsWith('.txt') || fileName.endsWith('.md')) {
+                    return `<li class="file ${visitedClass}"><a href="file.html?name=${encodeURIComponent(fullPath)}">${escapeHtml(moFileName)}</a><span class="mtime">${mtime}${percentHtml}</span></li>`;
+                }
+                return `<li class="folder"><a href="index.html?dir=${encodeURIComponent(fileName)}"><img src="web_icon/folder.svg" class='folder_icon'>${escapeHtml(moFileName)}</a><span class="mtime">${mtime}</span></li>`;
+            }
+
+            // 仅文件夹模式：非 epub 的文件隐藏
+            function applyFoldersOnly(container) {
+                container.querySelectorAll('li.file, li.folder').forEach(item => {
+                    const visible = !foldersOnly || item.classList.contains('folder') || item.classList.contains('epub');
+                    item.style.display = visible ? '' : 'none';
+                });
+            }
+
+            // 渲染下一批（默认 50 条），返回本次渲染的条数
+            function renderNextBatch() {
+                const listEl = document.querySelector('#fileList ul');
+                if (!listEl || renderedCount >= sortedFiles.length) return 0;
+
+                const batch = sortedFiles.slice(renderedCount, renderedCount + BATCH_SIZE);
+                const temp = document.createElement('ul');
+                temp.innerHTML = batch.map(buildFileItem).join('');
+                Array.from(temp.children).forEach(node => listEl.appendChild(node));
+                renderedCount += batch.length;
+
+                applyFoldersOnly(listEl);
+                return batch.length;
+            }
+
+            // 视口附近还有空间就继续渲染，直到填满或全部渲染完
+            function maybeLoadMore() {
+                const sentinel = document.getElementById('loadMoreSentinel');
+                if (!sentinel) return;
+                while (renderedCount < sortedFiles.length &&
+                       sentinel.getBoundingClientRect().top <= window.innerHeight + 400) {
+                    if (renderNextBatch() === 0) break;
+                }
+            }
+
             function renderFileList() {
                 const sortMode = localStorage.getItem('sortMode') || 'time';
-                let displayFiles = [...allFiles];
+                sortedFiles = [...allFiles];
                 if (sortMode === 'name') {
-                    displayFiles.sort((a, b) => {
+                    sortedFiles.sort((a, b) => {
                         const aIsDir = !a.name.endsWith('.txt') && !a.name.endsWith('.md') && !a.name.toLowerCase().endsWith('.epub');
                         const bIsDir = !b.name.endsWith('.txt') && !b.name.endsWith('.md') && !b.name.toLowerCase().endsWith('.epub');
                         if (aIsDir !== bIsDir) return aIsDir ? -1 : 1;
@@ -298,40 +374,26 @@
                     });
                 }
 
-                const fileListDiv = document.getElementById('fileList');
-                let htmlContent = '<ul>';
-                displayFiles.forEach(file => {
-                    const fileName = file.name;
-                    const moFileName = file.name.replace(/_/g, ' ').replace(/--/g, ' ').replace(/\.txt$/g, '').replace(/\.md$/g, '').replace(/\.epub$/i, '').replace(/——/g, ' ');
-                    const mtime = new Date(file.mtime).toLocaleString().replace(/,/g, ' '); // 格式化日期
-                    const fullPath = (currentDir && currentDir !== '' ? currentDir + '/' : '') + fileName;
-                    const isVisited = visitedFiles.has(fullPath);
-                    const percent = getFilePercent(fullPath);
-                    const visitedClass = isVisited ? 'visited' : '';
-                    const percentHtml = percent !== null ? `<span class="read-percent"> 已读 ${percent}%</span>` : '';
-                    if (fileName.toLowerCase().endsWith('.epub')) {
-                        htmlContent += `<li class="file epub ${visitedClass}"><a href="file.html?name=${encodeURIComponent(fullPath)}"><img src="web_icon/epub.svg" class='folder_icon'>${escapeHtml(moFileName)}</a><span class="mtime">${mtime}${percentHtml}</span></li>`;
-                    } else if (fileName.endsWith('.txt') || fileName.endsWith('.md')) {
-                        htmlContent += `<li class="file ${visitedClass}"><a href="file.html?name=${encodeURIComponent(fullPath)}">${escapeHtml(moFileName)}</a><span class="mtime">${mtime}${percentHtml}</span></li>`;
-                    } else {
-                        htmlContent += `<li class="folder"><a href="index.html?dir=${encodeURIComponent(fileName)}"><img src="web_icon/folder.svg" class='folder_icon'>${escapeHtml(moFileName)}</a><span class="mtime">${mtime}</span></li>`;
-                    }
-                });
-                htmlContent += '</ul>';
-                fileListDiv.innerHTML = htmlContent;
-
-                // 如果当前是仅文件夹模式，重新应用隐藏
-                if (foldersOnly) {
-                    const fileItems = document.querySelectorAll('li.file');
-                    fileItems.forEach(file => {
-                        if (file.classList.contains('epub')) {
-                            file.style.display = '';
-                        } else {
-                            file.style.display = 'none';
-                        }
-                    });
-                }
+                const listEl = document.querySelector('#fileList ul');
+                listEl.innerHTML = '';
+                renderedCount = 0;
+                renderNextBatch();
+                maybeLoadMore();
             }
+
+            // 滑到底部附近时渲染下一批
+            const loadMoreSentinel = document.getElementById('loadMoreSentinel');
+            if (loadMoreSentinel) {
+                new IntersectionObserver(entries => {
+                    if (entries.some(entry => entry.isIntersecting)) maybeLoadMore();
+                }, { rootMargin: '400px 0px' }).observe(loadMoreSentinel);
+            }
+            // 兜底：IntersectionObserver 在后台标签页可能延迟回调，滚动时再判断一次
+            window.addEventListener('scroll', () => {
+                if (renderedCount < sortedFiles.length) maybeLoadMore();
+            }, { passive: true });
+
+            await loadVisitedFiles();
 
             fetch(`/list-files?dir=${encodeURIComponent(dir)}`)
                 .then(response => response.json())
@@ -349,28 +411,9 @@
 
             function toggleFoldersOnly() {
                 foldersOnly = !foldersOnly;
-                const fileItems = document.querySelectorAll('li.file');
-                const folderItems = document.querySelectorAll('li.folder');
-
-                if (foldersOnly) {
-                    fileItems.forEach(file => {
-                        if (file.classList.contains('epub')) {
-                            file.style.display = '';
-                        } else {
-                            file.style.display = 'none';
-                        }
-                    });
-                    folderItems.forEach(folder => {
-                        folder.style.display = '';
-                    });
-                } else {
-                    fileItems.forEach(file => {
-                        file.style.display = '';
-                    });
-                    folderItems.forEach(folder => {
-                        folder.style.display = '';
-                    });
-                }
+                applyFoldersOnly(document.getElementById('fileList'));
+                // 隐藏掉大半条目后视口可能又空出来了，继续补下一批
+                maybeLoadMore();
             }
 
             button.addEventListener('click', () => {

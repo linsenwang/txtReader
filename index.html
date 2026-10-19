@@ -326,7 +326,7 @@
                 } else if (fileName.endsWith('.txt') || fileName.endsWith('.md')) {
                     return `<li class="file ${visitedClass}"><a href="file.html?name=${encodeURIComponent(fullPath)}">${escapeHtml(moFileName)}</a><span class="mtime">${mtime}${percentHtml}</span></li>`;
                 }
-                return `<li class="folder"><a href="index.html?dir=${encodeURIComponent(fileName)}"><img src="web_icon/folder.svg" class='folder_icon'>${escapeHtml(moFileName)}</a><span class="mtime">${mtime}</span></li>`;
+                return `<li class="folder"><a href="index.html?dir=${encodeURIComponent(fullPath)}"><img src="web_icon/folder.svg" class='folder_icon'>${escapeHtml(moFileName)}</a><span class="mtime">${mtime}</span></li>`;
             }
 
             // 仅文件夹模式：非 epub 的文件隐藏
@@ -396,7 +396,13 @@
             await loadVisitedFiles();
 
             fetch(`/list-files?dir=${encodeURIComponent(dir)}`)
-                .then(response => response.json())
+                .then(async response => {
+                    if (!response.ok) {
+                        const message = await response.text();
+                        throw new Error(message || `HTTP ${response.status}`);
+                    }
+                    return response.json();
+                })
                 .then(files => {
                     console.log('接收到的文件列表：', files); // 调试信息
                     allFiles = files;
@@ -404,6 +410,14 @@
                 })
                 .catch(error => {
                     console.error('获取文件列表出错：', error);
+                    const listEl = document.querySelector('#fileList ul');
+                    const parentDir = currentDir.includes('/')
+                        ? currentDir.slice(0, currentDir.lastIndexOf('/'))
+                        : '';
+                    const backLink = currentDir
+                        ? `<a href="index.html${parentDir ? `?dir=${encodeURIComponent(parentDir)}` : ''}">返回上级</a>`
+                        : '';
+                    listEl.innerHTML = `<li>加载失败：${escapeHtml(error.message || '未知错误')}${backLink ? ' · ' + backLink : ''}</li>`;
                 });
 
             const button = document.getElementById('toggleFoldersOnly');

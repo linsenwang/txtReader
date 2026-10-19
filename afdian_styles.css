@@ -177,9 +177,9 @@ background-color: #ffffff;
 @media (prefers-color-scheme: dark) {
     body {
         /* background-color: #121212; */
-        background-color: #1F2020;
+        background-color: #151515;
         /* color: #e0e0e0; */
-        color: #fff;
+        color: #bbb;
     }
 
     /* p {

@@ -1,6 +1,6 @@
 // 静态资源有改动就要把这个版本号往上加，否则装了 service worker 的客户端
 // 会一直用缓存里的旧文件（cache-first），改了 CSS 也看不到效果
-const CACHE_NAME = 'txtreader-v7';
+const CACHE_NAME = 'txtreader-v9';
 
 // KaTeX 字体，离线时公式才能用正确字形渲染
 const KATEX_FONTS = [
@@ -44,6 +44,9 @@ const STATIC_ASSETS = [
   '/web_icon/epub.svg',
   '/web_icon/sort.svg',
   '/web_icon/arrow.svg',
+  '/web_icon/arrow_forward.svg',
+  '/web_icon/paged_mode.svg',
+  '/web_icon/scroll_mode.svg',
   '/fonts/SarasaMonoSC-Regular.ttf',
   ...KATEX_FONTS
 ];

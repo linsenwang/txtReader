@@ -152,6 +152,29 @@
             cursor: not-allowed;
         }
         
+        /* 上一篇 / 下一篇 - 右下角悬浮 */
+        .doc-nav {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            display: flex;
+            flex-direction: row;
+            gap: 6px;
+            z-index: 1001;
+            opacity: 0;
+            transition: opacity 0.25s ease;
+        }
+        
+        .doc-nav:hover,
+        .doc-nav:focus-within {
+            opacity: 1;
+        }
+        
+        /* 翻页模式下让开底部的分页控制条 */
+        body.paginated-mode .doc-nav {
+            bottom: 80px;
+        }
+        
         .page-info {
             font-size: 14px;
             min-width: 60px;
@@ -237,8 +260,8 @@
     </style>
 </head>
 <body>
-    <button id="forceUpdateButton" title="刷新位置"><img src="web_icon/refresh.svg" style="height: 1.2em; width: 1.2em; margin: -0.24em 0.5em;"></button>
-    <button id="modeToggle" class="mode-toggle" title="切换翻页/滚动模式"><img src="web_icon/epub.svg" style="height: 1.2em; width: 1.2em; margin: -0.24em 0.5em;"></button>
+    <button id="forceUpdateButton" title="刷新位置"><img src="web_icon/refresh.svg" style="height: 1.2em; width: 1.2em;"></button>
+    <button id="modeToggle" class="mode-toggle" title="切换翻页/滚动模式"><img src="web_icon/scroll_mode.svg" style="height: 1.2em; width: 1.2em;"></button>
     
     <!-- 返回链接 -->
     <div class="back-link">
@@ -259,6 +282,12 @@
         <button class="page-btn" id="prevPage" title="上一页 (←)"><img src="web_icon/arrow.svg"></button>
         <span class="page-info" id="pageInfo">1 / 1</span>
         <button class="page-btn" id="nextPage" title="下一页 (→)"><img src="web_icon/arrow.svg" style="transform: rotate(180deg);"></button>
+    </div>
+    
+    <!-- 上一篇 / 下一篇 - 右下角悬浮 -->
+    <div class="doc-nav" id="docNav">
+        <button class="page-btn" id="prevFile" title="上一篇" disabled><img src="web_icon/arrow.svg" alt="上一篇"></button>
+        <button class="page-btn" id="nextFile" title="下一篇" disabled><img src="web_icon/arrow_forward.svg" alt="下一篇"></button>
     </div>
 
     <!-- 引入必要的库 -->
@@ -476,6 +505,89 @@
         }
     }
 
+    // ===== 上一篇 / 下一篇（同目录，跟随文件列表排序） =====
+    const DOC_FILE_RE = /\.(md|txt|epub)$/i;
+    const DOC_SORT_OPTIONS = ['name-asc', 'name-desc', 'time-asc', 'time-desc'];
+
+    function getDocSortPreference() {
+        const saved = localStorage.getItem('sortMode');
+        if (saved === 'name') return 'name-asc';
+        if (saved === 'time') return 'time-desc';
+        return DOC_SORT_OPTIONS.includes(saved) ? saved : 'time-desc';
+    }
+
+    function sortDocs(files, preference) {
+        const [field, order] = preference.split('-');
+        return [...files].sort((a, b) => {
+            const cmp = field === 'name'
+                ? a.name.localeCompare(b.name, 'zh-CN', { numeric: true, sensitivity: 'base' })
+                : a.mtime - b.mtime;
+            return order === 'asc' ? cmp : -cmp;
+        });
+    }
+
+    function docDisplayName(name) {
+        return name
+            .replace(/\.(md|txt|epub)$/i, '')
+            .replace(/_/g, ' ')
+            .replace(/--/g, ' ')
+            .replace(/——/g, ' ')
+            .trim();
+    }
+
+    async function initDocNavigation() {
+        const prevBtn = document.getElementById('prevFile');
+        const nextBtn = document.getElementById('nextFile');
+        if (!prevBtn || !nextBtn) return;
+
+        const slash = fileName.lastIndexOf('/');
+        const dir = slash >= 0 ? fileName.slice(0, slash) : '';
+        const baseName = slash >= 0 ? fileName.slice(slash + 1) : fileName;
+        const serverBase = SERVER_CONFIG.progressOnly && SERVER_CONFIG.remoteServerUrl
+            ? SERVER_CONFIG.remoteServerUrl
+            : '';
+
+        try {
+            const response = await fetch(`${serverBase}/list-files?dir=${encodeURIComponent(dir)}`);
+            if (!response.ok) return;
+
+            const docs = sortDocs(
+                (await response.json()).filter(file => DOC_FILE_RE.test(file.name)),
+                getDocSortPreference()
+            );
+
+            const currentIndex = docs.findIndex(file => file.name === baseName);
+            if (currentIndex < 0) return;
+
+            const bind = (button, target, label) => {
+                if (!target) {
+                    button.title = `${label}：没有了`;
+                    return;
+                }
+                button.disabled = false;
+                button.title = `${label}：${docDisplayName(target.name)}`;
+                button.addEventListener('click', () => {
+                    const path = dir ? `${dir}/${target.name}` : target.name;
+                    window.location.href = `file.html?name=${encodeURIComponent(path)}`;
+                });
+            };
+
+            bind(prevBtn, docs[currentIndex - 1], '上一篇');
+            bind(nextBtn, docs[currentIndex + 1], '下一篇');
+        } catch (error) {
+            console.error('获取相邻文件失败:', error);
+        }
+    }
+
+    function updateModeToggleIcon() {
+        const modeToggle = document.getElementById('modeToggle');
+        const icon = modeToggle.querySelector('img');
+        if (icon) {
+            icon.src = isPaginated ? 'web_icon/paged_mode.svg' : 'web_icon/scroll_mode.svg';
+        }
+        modeToggle.title = isPaginated ? '切换为滚动模式' : '切换为翻页模式';
+    }
+
     document.addEventListener('DOMContentLoaded', function() {
         const urlParams = new URLSearchParams(window.location.search);
         fileName = urlParams.get('name');
@@ -514,10 +626,11 @@
         fetchFileContent(fileName);
         
         // 初始化模式切换按钮
-        const modeToggle = document.getElementById('modeToggle');
-        modeToggle.textContent = isPaginated ? '📄' : '📖';
-        modeToggle.title = isPaginated ? '切换为滚动模式' : '切换为翻页模式';
-        modeToggle.addEventListener('click', toggleReadingMode);
+        updateModeToggleIcon();
+        document.getElementById('modeToggle').addEventListener('click', toggleReadingMode);
+
+        // 初始化上一篇 / 下一篇
+        initDocNavigation();
         
         // 初始化点击翻页区域显示状态
         if (isPaginated) {
@@ -1648,15 +1761,13 @@
         
         isPaginated = !isPaginated;
         localStorage.setItem('readingMode', isPaginated ? 'paginated' : 'scroll');
+        updateModeToggleIcon();
         
         const contentDiv = document.getElementById('content');
         const pageControls = document.getElementById('pageControls');
-        const modeToggle = document.getElementById('modeToggle');
         
         if (isPaginated) {
             // 切换到翻页模式
-            modeToggle.title = '切换为滚动模式';
-            
             // 显示点击翻页区域
             document.getElementById('clickAreaLeft').style.display = 'block';
             document.getElementById('clickAreaRight').style.display = 'block';
@@ -1665,7 +1776,6 @@
             paginateContent(currentParagraphIndex);
         } else {
             // 切换到滚动模式
-            modeToggle.title = '切换为翻页模式';
             contentDiv.classList.remove('paginated');
             document.body.classList.remove('paginated-mode');
             pageControls.style.display = 'none';

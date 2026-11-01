@@ -132,6 +132,66 @@
             justify-content: center;
         }
 
+        .sort-menu {
+            position: fixed;
+            top: 66px;
+            left: 70px;
+            z-index: 1000;
+            padding: 6px;
+            display: flex;
+            flex-direction: column;
+            background: rgba(255, 255, 255, 0.92);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid rgba(0, 0, 0, 0.08);
+            border-radius: 10px;
+        }
+
+        .sort-menu[hidden] {
+            display: none;
+        }
+
+        .sort-menu button {
+            padding: 8px 12px;
+            border: none;
+            border-radius: 6px;
+            background: transparent;
+            color: #000;
+            font-family: inherit;
+            font-size: 14px;
+            text-align: left;
+            white-space: nowrap;
+            cursor: pointer;
+        }
+
+        .sort-menu button:hover {
+            background: rgba(0, 0, 0, 0.06);
+        }
+
+        .sort-menu button.active {
+            color: #ACBDD0;
+            font-weight: bold;
+        }
+
+        @media (prefers-color-scheme: dark) {
+            .sort-menu {
+                background: rgba(40, 40, 40, 0.92);
+                border-color: rgba(255, 255, 255, 0.1);
+            }
+
+            .sort-menu button {
+                color: #fff;
+            }
+
+            .sort-menu button:hover {
+                background: rgba(255, 255, 255, 0.08);
+            }
+
+            .sort-menu button.active {
+                color: #ACBDD0;
+            }
+        }
+
         /* 最近阅读悬浮条（透明全宽，悬浮在页面最底部） */
         #lastReadBar {
             position: fixed;
@@ -196,7 +256,13 @@
 </head>
 <body>
     <button id="toggleFoldersOnly"><img src="web_icon/folder.svg" class='folder_icon'></button>
-    <button id="toggleSortMode" title="切换排序"><img src="web_icon/sort.svg" class="folder_icon"></button>
+    <button id="toggleSortMode" title="排序方式" aria-haspopup="menu" aria-expanded="false"><img src="web_icon/sort.svg" class="folder_icon"></button>
+    <div class="sort-menu" id="sortMenu" role="menu" hidden>
+        <button type="button" role="menuitemradio" aria-checked="false" data-sort="name-asc">名称正序</button>
+        <button type="button" role="menuitemradio" aria-checked="false" data-sort="name-desc">名称倒序</button>
+        <button type="button" role="menuitemradio" aria-checked="false" data-sort="time-asc">时间正序</button>
+        <button type="button" role="menuitemradio" aria-checked="false" data-sort="time-desc">时间倒序</button>
+    </div>
     <!-- 文件列表 -->
     <div class="file-list" id="fileList">
         <!-- 文件列表分批渲染，滑到底部由 sentinel 触发下一批 -->
@@ -272,6 +338,30 @@
 
             let allFiles = [];
             const currentDir = dir;
+
+            // 排序偏好：name-asc / name-desc / time-asc / time-desc
+            const SORT_OPTIONS = ['name-asc', 'name-desc', 'time-asc', 'time-desc'];
+
+            function getSortPreference() {
+                const saved = localStorage.getItem('sortMode');
+                if (saved === 'name') return 'name-asc';
+                if (saved === 'time') return 'time-desc';
+                return SORT_OPTIONS.includes(saved) ? saved : 'time-desc';
+            }
+
+            let sortMode = getSortPreference();
+
+            function compareFiles(a, b) {
+                const [field, order] = sortMode.split('-');
+                if (field === 'name') {
+                    const aIsDir = !/\.(txt|md|epub)$/i.test(a.name);
+                    const bIsDir = !/\.(txt|md|epub)$/i.test(b.name);
+                    if (aIsDir !== bIsDir) return aIsDir ? -1 : 1;
+                    const cmp = a.name.localeCompare(b.name, 'zh-CN', { numeric: true, sensitivity: 'base' });
+                    return order === 'asc' ? cmp : -cmp;
+                }
+                return order === 'asc' ? a.mtime - b.mtime : b.mtime - a.mtime;
+            }
 
             // 已读文件由服务器维护（跨设备统一），网络异常时退回本机记录
             let visitedFiles = new Set();
@@ -363,16 +453,7 @@
             }
 
             function renderFileList() {
-                const sortMode = localStorage.getItem('sortMode') || 'time';
-                sortedFiles = [...allFiles];
-                if (sortMode === 'name') {
-                    sortedFiles.sort((a, b) => {
-                        const aIsDir = !a.name.endsWith('.txt') && !a.name.endsWith('.md') && !a.name.toLowerCase().endsWith('.epub');
-                        const bIsDir = !b.name.endsWith('.txt') && !b.name.endsWith('.md') && !b.name.toLowerCase().endsWith('.epub');
-                        if (aIsDir !== bIsDir) return aIsDir ? -1 : 1;
-                        return a.name.localeCompare(b.name, 'zh-CN', { numeric: true, sensitivity: 'base' });
-                    });
-                }
+                sortedFiles = [...allFiles].sort(compareFiles);
 
                 const listEl = document.querySelector('#fileList ul');
                 listEl.innerHTML = '';
@@ -441,28 +522,66 @@
                 }
             });
 
-            // 排序切换
+            // 排序选单
             const sortButton = document.getElementById('toggleSortMode');
-            let sortMode = localStorage.getItem('sortMode') || 'time';
-            sortButton.title = sortMode === 'time' ? '按时间排序，点击切换' : '按名称排序，点击切换';
+            const sortMenu = document.getElementById('sortMenu');
 
-            function toggleSortMode() {
-                sortMode = sortMode === 'time' ? 'name' : 'time';
+            function updateSortMenu() {
+                sortMenu.querySelectorAll('[data-sort]').forEach(item => {
+                    const active = item.dataset.sort === sortMode;
+                    item.classList.toggle('active', active);
+                    item.setAttribute('aria-checked', active ? 'true' : 'false');
+                });
+                const label = sortMenu.querySelector(`[data-sort="${sortMode}"]`).textContent;
+                sortButton.title = `排序方式：${label}`;
+            }
+
+            function setSortMode(value) {
+                if (!SORT_OPTIONS.includes(value)) return;
+                sortMode = value;
                 localStorage.setItem('sortMode', sortMode);
-                sortButton.title = sortMode === 'time' ? '按时间排序，点击切换' : '按名称排序，点击切换';
+                updateSortMenu();
                 renderFileList();
             }
 
-            sortButton.addEventListener('click', () => {
-                toggleSortMode();
+            function toggleSortMenu(force) {
+                const show = force !== undefined ? force : sortMenu.hidden;
+                sortMenu.hidden = !show;
+                sortButton.setAttribute('aria-expanded', show ? 'true' : 'false');
+            }
+
+            sortButton.addEventListener('click', (event) => {
+                event.stopPropagation();
+                toggleSortMenu();
+            });
+
+            sortMenu.addEventListener('click', (event) => {
+                const item = event.target.closest('[data-sort]');
+                if (!item) return;
+                setSortMode(item.dataset.sort);
+                toggleSortMenu(false);
+            });
+
+            document.addEventListener('click', (event) => {
+                if (!sortMenu.hidden &&
+                    !sortMenu.contains(event.target) &&
+                    !sortButton.contains(event.target)) {
+                    toggleSortMenu(false);
+                }
             });
 
             document.addEventListener('keydown', function(event) {
+                if (event.key === 'Escape') {
+                    toggleSortMenu(false);
+                }
                 if (event.shiftKey && event.metaKey && event.key.toLowerCase() === 's') {
                     event.preventDefault();
-                    toggleSortMode();
+                    const next = SORT_OPTIONS[(SORT_OPTIONS.indexOf(sortMode) + 1) % SORT_OPTIONS.length];
+                    setSortMode(next);
                 }
             });
+
+            updateSortMenu();
 
             // -------------------------------------------------------------
             // 最近阅读悬浮条（透明全宽，悬浮在页面最底部，点击继续阅读）

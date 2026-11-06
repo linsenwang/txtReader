@@ -31,8 +31,9 @@ a {
 }
 
 p {
-    /* overflow-x: scroll; */
-    overflow-y: hidden;
+    /* overflow-y: hidden 会让段落变成横向滚动容器（overflow-x 被强制为 auto），
+       夹在文字里的块级公式就会被裁掉，所以这里不裁切 */
+    overflow: visible;
 }
 
 small {
@@ -125,10 +126,18 @@ blockquote {
 }
 
 .katex-display {
+    /* 超宽公式保持原始大小，以正文栏中线为中心向左右两侧溢出，
+       完整显示，不滚动也不缩放 */
+    display: flex;
+    justify-content: center;
     margin: 0.9em 0;
     padding: 0.15em 0;
-    overflow-x: auto;   /* 超长公式横向滚动，不撑破页面 */
-    overflow-y: hidden;
+    overflow: visible;
+}
+
+/* 作为 flex 项目不要被压缩，保持公式的原始宽度 */
+.katex-display > .katex {
+    flex: none;
 }
 
 /* 列表、引用块里的块级公式收紧一点 */
@@ -179,7 +188,7 @@ background-color: #ffffff;
         /* background-color: #121212; */
         background-color: #151515;
         /* color: #e0e0e0; */
-        color: #bbb;
+        color: #fafafa;
     }
 
     /* p {
@@ -229,7 +238,7 @@ background-color: #ffffff;
   @media print {
   /* 打印时用纸张自己的页边距，别让 body 去挤 */
   @page {
-  margin: 1.5cm 1.8cm;
+  /* margin: 1.5cm 1.8cm; */
   }
 
   html {

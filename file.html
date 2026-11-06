@@ -41,14 +41,18 @@
             text-decoration: underline;
         }
         .content {
-            overflow: hidden;
+            /* flow-root 保持 BFC（原来 overflow:hidden 的作用），
+               但不裁剪内容，超宽公式才能溢出正文栏显示 */
+            display: flow-root;
             margin: auto;
         }
         
         /* 翻页模式样式 */
         .content.paginated {
             height: calc(100vh - 60px);
-            overflow: hidden;
+            /* 纵向仍然裁掉超出页面的内容，横向不裁，超宽公式才能溢出正文栏 */
+            overflow-x: visible;
+            overflow-y: clip;
             position: relative;
         }
         
@@ -258,11 +262,11 @@
             pointer-events: none;
         }
 
-        /* 临时阅读（剪贴板） */
+        /* 临时阅读（剪贴板）：放在右上角模式切换按钮左侧 */
         #clipboardButton {
             position: fixed;
             top: 20px;
-            left: 20px;
+            right: 70px;
             z-index: 999;
             height: 40px;
             width: 40px;
@@ -1177,6 +1181,17 @@
             ],
             ignoredTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code', 'option']
         }, KATEX_OPTIONS));
+        unwrapDisplayMath(element);
+    }
+
+    // 单独成段的块级公式从 <p> 里解包，避免段落样式和溢出裁剪影响公式
+    function unwrapDisplayMath(root) {
+        root.querySelectorAll('p > .katex-display').forEach(node => {
+            const p = node.parentElement;
+            const meaningful = Array.from(p.childNodes)
+                .filter(n => n.nodeType !== Node.TEXT_NODE || n.textContent.trim());
+            if (meaningful.length === 1) p.replaceWith(node);
+        });
     }
 
     /**
@@ -1652,12 +1667,7 @@
         contentDiv.innerHTML = buildContentHtml(text);
 
         // 单独成段的块级公式从 <p> 里解包，避免段落 margin 和公式 margin 叠加
-        contentDiv.querySelectorAll('p > .katex-display').forEach(node => {
-            const p = node.parentElement;
-            const meaningful = Array.from(p.childNodes)
-                .filter(n => n.nodeType !== Node.TEXT_NODE || n.textContent.trim());
-            if (meaningful.length === 1) p.replaceWith(node);
-        });
+        unwrapDisplayMath(contentDiv);
 
         // 给元素编号用于记录阅读位置，跳过 KaTeX 生成的内部节点
         let seq = 0;

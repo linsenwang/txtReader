@@ -132,6 +132,22 @@
             justify-content: center;
         }
 
+        #clipboardMode {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 999;
+            height: 40px;
+            width: 40px;
+            background-color: rgba(255, 255, 255, 0);
+            border-radius: 40px;
+            border: none;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
         .sort-menu {
             position: fixed;
             top: 66px;
@@ -257,6 +273,7 @@
 <body>
     <button id="toggleFoldersOnly"><img src="web_icon/folder.svg" class='folder_icon'></button>
     <button id="toggleSortMode" title="排序方式" aria-haspopup="menu" aria-expanded="false"><img src="web_icon/sort.svg" class="folder_icon"></button>
+    <button id="clipboardMode" title="临时阅读剪贴板内容"><img src="web_icon/clipboard.svg" class="folder_icon"></button>
     <div class="sort-menu" id="sortMenu" role="menu" hidden>
         <button type="button" role="menuitemradio" aria-checked="false" data-sort="name-asc">名称正序</button>
         <button type="button" role="menuitemradio" aria-checked="false" data-sort="name-desc">名称倒序</button>
@@ -277,6 +294,37 @@
                 window.location.href = './';
             }
         });
+
+        // 临时阅读：直接读取剪贴板内容，交给阅读页渲染（不写入服务器、不记录进度）
+        const CLIPBOARD_TEXT_KEY = '__clipboardText__';
+
+        async function openClipboardReader() {
+            let text = '';
+            try {
+                if (!navigator.clipboard || typeof navigator.clipboard.readText !== 'function') {
+                    throw new Error('浏览器不支持 clipboard.readText');
+                }
+                text = await navigator.clipboard.readText();
+            } catch (error) {
+                console.warn('读取剪贴板失败，转入手动粘贴:', error);
+            }
+
+            if (text && text.trim()) {
+                try {
+                    sessionStorage.setItem(CLIPBOARD_TEXT_KEY, text);
+                    window.location.href = 'file.html?clipboard=1';
+                    return;
+                } catch (error) {
+                    console.error('保存剪贴板内容失败:', error);
+                    alert('剪贴板内容过大，无法直接传递，请在阅读页手动粘贴');
+                }
+            }
+
+            // 剪贴板为空或没有读取权限：打开阅读页的粘贴面板
+            window.location.href = 'file.html?clipboard=1&paste=1';
+        }
+
+        document.getElementById('clipboardMode').addEventListener('click', openClipboardReader);
 
         // 服务器配置
         const SERVER_CONFIG = {

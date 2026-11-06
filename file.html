@@ -257,10 +257,166 @@
             z-index: 9999;
             pointer-events: none;
         }
+
+        /* 临时阅读（剪贴板） */
+        #clipboardButton {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            z-index: 999;
+            height: 40px;
+            width: 40px;
+            background-color: rgba(255, 255, 255, 0);
+            border-radius: 40px;
+            border: none;
+            cursor: pointer;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            opacity: 0.65;
+            transition: opacity 0.25s ease;
+        }
+
+        #clipboardButton:hover {
+            opacity: 1;
+        }
+
+        #clipboardButton img {
+            height: 1.2em;
+            width: 1.2em;
+        }
+
+        .clipboard-overlay {
+            position: fixed;
+            inset: 0;
+            z-index: 2000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            background: rgba(255, 255, 255, 0.72);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+        }
+
+        .clipboard-overlay[hidden] {
+            display: none;
+        }
+
+        .clipboard-panel {
+            width: min(560px, 100%);
+            max-height: 100%;
+            box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
+            padding: 18px;
+            background: #fff;
+            border: 1px solid rgba(0, 0, 0, 0.08);
+            border-radius: 14px;
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.16);
+            color: #000;
+        }
+
+        .clipboard-panel h2 {
+            margin: 0 0 6px;
+            font-size: 16px;
+        }
+
+        .clipboard-panel p {
+            margin: 0 0 12px;
+            font-size: 13px;
+            color: #666;
+        }
+
+        .clipboard-panel textarea {
+            width: 100%;
+            min-height: 200px;
+            flex: 1;
+            box-sizing: border-box;
+            resize: vertical;
+            padding: 10px;
+            font-family: inherit;
+            font-size: 14px;
+            line-height: 1.5;
+            color: #000;
+            background: #fff;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            outline: none;
+        }
+
+        .clipboard-panel textarea:focus {
+            border-color: #ACBDD0;
+        }
+
+        .clipboard-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin-top: 12px;
+        }
+
+        .clipboard-actions button {
+            padding: 8px 14px;
+            font-family: inherit;
+            font-size: 14px;
+            color: #000;
+            background: transparent;
+            border: 1px solid rgba(0, 0, 0, 0.12);
+            border-radius: 8px;
+            cursor: pointer;
+        }
+
+        .clipboard-actions button.primary {
+            color: #fff;
+            background: #111;
+            border-color: #111;
+        }
+
+        .clipboard-actions button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        @media (prefers-color-scheme: dark) {
+            .clipboard-overlay {
+                background: rgba(21, 21, 21, 0.78);
+            }
+
+            .clipboard-panel {
+                color: #fafafa;
+                background: #232323;
+                border-color: rgba(255, 255, 255, 0.1);
+                box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+            }
+
+            .clipboard-panel p {
+                color: #aaa;
+            }
+
+            .clipboard-panel textarea {
+                color: #fafafa;
+                background: #1a1a1a;
+                border-color: #3a3a3a;
+            }
+
+            .clipboard-actions button {
+                color: #fafafa;
+                border-color: rgba(255, 255, 255, 0.18);
+            }
+
+            .clipboard-actions button.primary {
+                color: #111;
+                background: #fafafa;
+                border-color: #fafafa;
+            }
+        }
     </style>
 </head>
 <body>
     <button id="forceUpdateButton" title="刷新位置"><img src="web_icon/refresh.svg" style="height: 1.2em; width: 1.2em;"></button>
+    <button id="clipboardButton" title="从剪贴板重新读取"><img src="web_icon/clipboard.svg"></button>
     <button id="modeToggle" class="mode-toggle" title="切换翻页/滚动模式"><img src="web_icon/scroll_mode.svg" style="height: 1.2em; width: 1.2em;"></button>
     
     <!-- 返回链接 -->
@@ -288,6 +444,20 @@
     <div class="doc-nav" id="docNav">
         <button class="page-btn" id="prevFile" title="上一篇" disabled><img src="web_icon/arrow.svg" alt="上一篇"></button>
         <button class="page-btn" id="nextFile" title="下一篇" disabled><img src="web_icon/arrow_forward.svg" alt="下一篇"></button>
+    </div>
+
+    <!-- 临时阅读：剪贴板内容粘贴 / 读取面板 -->
+    <div class="clipboard-overlay" id="clipboardOverlay" hidden>
+        <div class="clipboard-panel">
+            <h2>临时阅读</h2>
+            <p>内容只在当前页面渲染，不会写入服务器，也不会记录阅读进度。</p>
+            <textarea id="clipboardTextarea" placeholder="按 Cmd/Ctrl + V 粘贴内容，或点击下方「读取剪贴板」"></textarea>
+            <div class="clipboard-actions">
+                <button type="button" id="clipboardClose">关闭</button>
+                <button type="button" id="clipboardRender" class="primary">渲染</button>
+                <button type="button" id="clipboardRead">读取剪贴板</button>
+            </div>
+        </div>
     </div>
 
     <!-- 引入必要的库 -->
@@ -321,6 +491,11 @@
     loadServerConfig();
 
     var fileName = '';
+
+    // 临时阅读模式：内容来自剪贴板，只在当前页面渲染，不保存进度、不上报已读
+    const CLIPBOARD_TEXT_KEY = '__clipboardText__';
+    let IS_CLIPBOARD_MODE = false;
+    let clipboardRendered = false;
     
     // 阅读模式状态
     let isPaginated = localStorage.getItem('readingMode') === 'paginated';
@@ -588,49 +763,187 @@
         modeToggle.title = isPaginated ? '切换为滚动模式' : '切换为翻页模式';
     }
 
+    // ===== 临时阅读（剪贴板） =====
+
+    function getStoredClipboardText() {
+        try {
+            return sessionStorage.getItem(CLIPBOARD_TEXT_KEY) || '';
+        } catch (e) {
+            return '';
+        }
+    }
+
+    function storeClipboardText(text) {
+        try {
+            sessionStorage.setItem(CLIPBOARD_TEXT_KEY, text);
+            return true;
+        } catch (e) {
+            console.error('保存剪贴板内容失败:', e);
+            return false;
+        }
+    }
+
+    function initClipboardMode(forcePaste) {
+        const stored = getStoredClipboardText();
+        if (!forcePaste && stored.trim()) {
+            renderClipboardContent(stored);
+            return;
+        }
+        openClipboardPanel(stored);
+    }
+
+    function renderClipboardContent(text) {
+        clipboardRendered = true;
+        hideClipboardPanel();
+
+        const contentDiv = document.getElementById('content');
+        contentDiv.setAttribute('data-original-text', text);
+        parseMarkdownToHtml(text);
+        window.scrollTo(0, 0);
+    }
+
+    function openClipboardPanel(initialText) {
+        const overlay = document.getElementById('clipboardOverlay');
+        const textarea = document.getElementById('clipboardTextarea');
+        if (!overlay || !textarea) return;
+
+        if (!textarea.value.trim() && initialText) {
+            textarea.value = initialText;
+        }
+        overlay.hidden = false;
+        textarea.focus();
+    }
+
+    function hideClipboardPanel() {
+        const overlay = document.getElementById('clipboardOverlay');
+        if (overlay) overlay.hidden = true;
+    }
+
+    function bindClipboardEvents() {
+        const overlay = document.getElementById('clipboardOverlay');
+        const textarea = document.getElementById('clipboardTextarea');
+        const readButton = document.getElementById('clipboardRead');
+        const renderButton = document.getElementById('clipboardRender');
+        const closeButton = document.getElementById('clipboardClose');
+        const reopenButton = document.getElementById('clipboardButton');
+        if (!overlay || !textarea || !readButton || !renderButton || !closeButton) return;
+
+        async function readClipboard() {
+            if (readButton.disabled) return;
+            readButton.disabled = true;
+            try {
+                if (!navigator.clipboard || typeof navigator.clipboard.readText !== 'function') {
+                    throw new Error('浏览器不支持 clipboard.readText');
+                }
+                const text = await navigator.clipboard.readText();
+                if (!text || !text.trim()) {
+                    showToast('剪贴板是空的');
+                    textarea.focus();
+                    return;
+                }
+                textarea.value = text;
+                storeClipboardText(text);
+                renderClipboardContent(text);
+            } catch (error) {
+                console.warn('读取剪贴板失败:', error);
+                showToast('无法直接读取剪贴板，请手动粘贴');
+                textarea.focus();
+            } finally {
+                readButton.disabled = false;
+            }
+        }
+
+        readButton.addEventListener('click', readClipboard);
+
+        renderButton.addEventListener('click', () => {
+            const text = textarea.value;
+            if (!text.trim()) {
+                showToast('请先粘贴内容');
+                textarea.focus();
+                return;
+            }
+            storeClipboardText(text);
+            renderClipboardContent(text);
+        });
+
+        closeButton.addEventListener('click', () => {
+            if (clipboardRendered) {
+                hideClipboardPanel();
+            } else {
+                window.location.href = './';
+            }
+        });
+
+        if (reopenButton) {
+            reopenButton.addEventListener('click', () => {
+                openClipboardPanel(getStoredClipboardText());
+                readClipboard();
+            });
+        }
+
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape' && !overlay.hidden) {
+                event.preventDefault();
+                closeButton.click();
+            }
+        });
+    }
+
     document.addEventListener('DOMContentLoaded', function() {
         const urlParams = new URLSearchParams(window.location.search);
         fileName = urlParams.get('name');
+        IS_CLIPBOARD_MODE = urlParams.get('clipboard') === '1';
 
-        if (!fileName) {
-            alert('未提供文件名参数');
-            return;
-        }
-
-        // 记录已读（服务器维护，跨设备同步；本机 localStorage 仅作离线兜底）
-        try {
-            const visitedFiles = JSON.parse(localStorage.getItem('visitedFiles') || '[]');
-            if (!visitedFiles.includes(fileName)) {
-                visitedFiles.push(fileName);
-                localStorage.setItem('visitedFiles', JSON.stringify(visitedFiles));
+        if (IS_CLIPBOARD_MODE) {
+            // 临时阅读：只渲染剪贴板内容，不读写服务器、不记录进度
+            fileName = '临时阅读.md';
+            document.title = '临时阅读';
+            document.getElementById('clipboardButton').style.display = 'flex';
+            document.getElementById('forceUpdateButton').style.display = 'none';
+            document.getElementById('docNav').style.display = 'none';
+            bindClipboardEvents();
+            initClipboardMode(urlParams.get('paste') === '1');
+        } else {
+            if (!fileName) {
+                alert('未提供文件名参数');
+                return;
             }
-        } catch (e) {
-            console.error('记录已访问文件失败:', e);
+
+            // 记录已读（服务器维护，跨设备同步；本机 localStorage 仅作离线兜底）
+            try {
+                const visitedFiles = JSON.parse(localStorage.getItem('visitedFiles') || '[]');
+                if (!visitedFiles.includes(fileName)) {
+                    visitedFiles.push(fileName);
+                    localStorage.setItem('visitedFiles', JSON.stringify(visitedFiles));
+                }
+            } catch (e) {
+                console.error('记录已访问文件失败:', e);
+            }
+            markFileAsRead(fileName);
+
+            // 记录最近阅读（首页底部悬浮条使用，只保存最近的一篇）
+            try {
+                localStorage.setItem('lastRead', JSON.stringify({
+                    path: fileName,
+                    timestamp: Date.now()
+                }));
+            } catch (e) {
+                console.error('记录最近阅读失败:', e);
+            }
+
+            // 更新页面标题
+            document.title = fileName.replace(/\.txt$/i, '').replace(/\.md$/i, '').replace(/\.epub$/i, '').trim();
+
+            // 获取文件内容并渲染
+            fetchFileContent(fileName);
+
+            // 初始化上一篇 / 下一篇
+            initDocNavigation();
         }
-        markFileAsRead(fileName);
 
-        // 记录最近阅读（首页底部悬浮条使用，只保存最近的一篇）
-        try {
-            localStorage.setItem('lastRead', JSON.stringify({
-                path: fileName,
-                timestamp: Date.now()
-            }));
-        } catch (e) {
-            console.error('记录最近阅读失败:', e);
-        }
-
-        // 更新页面标题
-        document.title = fileName.replace(/\.txt$/i, '').replace(/\.md$/i, '').replace(/\.epub$/i, '').trim();
-
-        // 获取文件内容并渲染
-        fetchFileContent(fileName);
-        
         // 初始化模式切换按钮
         updateModeToggleIcon();
         document.getElementById('modeToggle').addEventListener('click', toggleReadingMode);
-
-        // 初始化上一篇 / 下一篇
-        initDocNavigation();
         
         // 初始化点击翻页区域显示状态
         if (isPaginated) {
@@ -661,6 +974,11 @@
         
         // 键盘翻页快捷键
         document.addEventListener('keydown', (event) => {
+            // 在输入框里打字时不触发翻页
+            const target = event.target;
+            if (target && (target.tagName === 'TEXTAREA' || target.tagName === 'INPUT' || target.isContentEditable)) {
+                return;
+            }
             // 左右箭头翻页
             if (isPaginated) {
                 if (event.key === 'ArrowLeft' || event.key === 'PageUp') {
@@ -926,7 +1244,8 @@
      * @returns {string} - 渲染好的 HTML
      */
     function buildContentHtml(rawText) {
-        const withAssets = resolveImagePaths(rawText, fileName);
+        // 剪贴板内容没有关联的本地文件目录，跳过相对图片路径改写
+        const withAssets = IS_CLIPBOARD_MODE ? rawText : resolveImagePaths(rawText, fileName);
         const extracted = extractMath(withAssets);
         const cleaned = cleanupPlainText(extracted.text, fileName);
         return restoreMath(sanitizeHtml(marked.parse(cleaned)), extracted.blocks);
@@ -1623,6 +1942,12 @@
     
     // 初始化翻页模式（带进度恢复）- 先获取进度再分页
     async function initPaginatedMode() {
+        // 临时阅读没有服务器进度，直接从第 1 页开始
+        if (IS_CLIPBOARD_MODE) {
+            paginateContent();
+            return;
+        }
+
         // 先获取服务器进度
         let targetParagraphIndex = null;
         try {
@@ -1895,6 +2220,8 @@
 
     // 保存翻页进度（保存当前页第一个段落索引到服务器）
     async function savePaginatedProgress() {
+        if (IS_CLIPBOARD_MODE) return;
+
         const currentPageElement = document.querySelector('.content.paginated .page.active');
         if (!currentPageElement) return;
         
@@ -1990,6 +2317,8 @@
 
     // 从服务器获取阅读进度
     async function fetchReadingProgress() {
+        if (IS_CLIPBOARD_MODE) return null;
+
         try {
             // 优先从本地获取，如果本地没有或本地是仅进度服务器且有远端配置，则从远端获取
             const progressUrl = SERVER_CONFIG.progressOnly && SERVER_CONFIG.remoteServerUrl
@@ -2011,6 +2340,8 @@
     }
 
     function checkAndSendMiddlePIndex() {
+        if (IS_CLIPBOARD_MODE) return;
+
         // 翻页模式下不发送滚动进度，而是保存页码
         if (isPaginated) {
             if (firstLoad) {
@@ -2102,6 +2433,8 @@
 
     // 页面离开前兜底保存（onUnload=true 走 beacon，普通 fetch 在卸载时可能来不及发出）
     function flushReadingProgress(onUnload) {
+        if (IS_CLIPBOARD_MODE) return;
+
         if (isPaginated) {
             // 翻页模式下每次翻页已随 goToPage 实时保存，这里只需在关页时补发当前页
             if (onUnload) {
@@ -2156,6 +2489,8 @@
     }
 
     function forceUpdateMiddlePIndex() {
+        if (IS_CLIPBOARD_MODE) return;
+
         // 翻页模式下保存页码
         if (isPaginated) {
             savePaginatedProgress();

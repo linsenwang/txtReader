@@ -295,7 +295,7 @@
             }
         });
 
-        // 临时阅读：直接读取剪贴板内容，交给阅读页渲染（不写入服务器、不记录进度）
+        // 临时阅读：直接读取剪贴板内容，交给阅读页渲染（内容按 id 暂存、不记录进度）
         const CLIPBOARD_TEXT_KEY = '__clipboardText__';
 
         async function openClipboardReader() {

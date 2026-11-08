@@ -1,6 +1,7 @@
 const express = require('express');
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 require('dotenv').config();
 const app = express();
 // 阻止访问敏感文件和目录的中间件
@@ -508,11 +509,224 @@ app.get('/epub-content', async (req, res) => {
 const CryptoJS = require('crypto-js');
 const { Mutex } = require('async-mutex'); // 引入 Mutex
 
-app.use(express.json());
+app.use(express.json({ limit: '20mb' }));
 
 const fsp = require('fs').promises;
 const fileMutex = new Mutex();
 const HASHES_FILE = process.env.HASHES_FILE || 'hashes.json';
+
+// ===== 临时阅读暂存 =====
+// 剪贴板内容按 id 暂存到本地目录，可用 file.html?tmp=<id> 重访；
+// 超过有效期后自动清理。保存模式会把内容写入默认文件目录（baseDirectory）。
+const TEMP_READ_DIR = process.env.TEMP_READ_DIR
+    ? path.resolve(process.env.TEMP_READ_DIR)
+    : path.join(__dirname, '.tmp-reads');
+const TEMP_READ_TTL_MS = Math.max(
+    1,
+    Number(process.env.TEMP_READ_TTL_HOURS) || 24
+) * 60 * 60 * 1000;
+const TEMP_READ_ID_RE = /^[a-f0-9]{16}$/i;
+
+function createTempId() {
+    return crypto.randomBytes(8).toString('hex');
+}
+
+// 从内容首行提取一个默认标题
+function deriveTempTitle(text) {
+    const firstLine = String(text || '')
+        .split(/\r?\n/)
+        .map(line => line.trim())
+        .find(line => line.length > 0);
+    if (!firstLine) return '临时阅读';
+    return firstLine.replace(/^#{1,6}\s*/, '').slice(0, 80).trim() || '临时阅读';
+}
+
+// 清理过期或被破坏的暂存文件
+async function cleanupTempReads() {
+    let files;
+    try {
+        files = await fsp.readdir(TEMP_READ_DIR);
+    } catch (err) {
+        if (err.code !== 'ENOENT') {
+            console.error('清理临时阅读时无法读取目录:', err);
+        }
+        return;
+    }
+
+    const now = Date.now();
+    await Promise.all(files.filter(file => file.endsWith('.json')).map(async file => {
+        const filePath = path.join(TEMP_READ_DIR, file);
+        try {
+            const record = JSON.parse(await fsp.readFile(filePath, 'utf8'));
+            if (!record.expiresAt || record.expiresAt <= now) {
+                await fsp.unlink(filePath);
+            }
+        } catch (err) {
+            // 内容损坏或读取失败时，按文件修改时间兜底清理
+            try {
+                const stats = await fsp.stat(filePath);
+                if (now - stats.mtimeMs > TEMP_READ_TTL_MS) {
+                    await fsp.unlink(filePath);
+                }
+            } catch (ignored) {
+                // 文件可能已被其他请求清理
+            }
+        }
+    }));
+}
+
+// 把用户输入清洗成安全的文件名（默认保存为 Markdown）
+function sanitizeSaveTitle(title, text) {
+    let name = String(title || '').trim();
+    if (!name) name = deriveTempTitle(text);
+
+    name = name
+        .replace(/[\u0000-\u001f\u007f]/g, ' ')
+        .replace(/[\\/:*?"<>|]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .replace(/^[\s.]+/, '')
+        .trim();
+
+    if (!name) name = '临时阅读';
+    if (!/\.(md|txt)$/i.test(name)) name += '.md';
+
+    const ext = path.extname(name).toLowerCase();
+    const base = path.basename(name, path.extname(name))
+        .replace(/^[\s.]+/, '')
+        .trim()
+        .slice(0, 80)
+        .trim() || '临时阅读';
+    return base + ext;
+}
+
+// 默认目录下重名时自动追加 -1、-2 …
+function uniqueTempSaveName(fileName) {
+    const ext = path.extname(fileName);
+    const base = path.basename(fileName, ext);
+    let candidate = fileName;
+    let index = 1;
+    while (fs.existsSync(path.join(baseDirectory, candidate))) {
+        candidate = `${base}-${index++}${ext}`;
+    }
+    return candidate;
+}
+
+// 暂存一篇文章，返回可用于重访的 id
+app.post('/temp-read', async (req, res) => {
+    const { text, title } = req.body || {};
+
+    if (typeof text !== 'string' || !text.trim()) {
+        return res.status(400).json({ error: '内容为空' });
+    }
+    if (Buffer.byteLength(text, 'utf8') > MAX_FILE_SIZE) {
+        return res.status(413).json({ error: '内容过大' });
+    }
+
+    const id = createTempId();
+    const now = Date.now();
+    const record = {
+        id,
+        text,
+        title: deriveTempTitle(title || text),
+        createdAt: now,
+        expiresAt: now + TEMP_READ_TTL_MS
+    };
+
+    try {
+        await fsp.mkdir(TEMP_READ_DIR, { recursive: true });
+        await fsp.writeFile(
+            path.join(TEMP_READ_DIR, `${id}.json`),
+            JSON.stringify(record)
+        );
+        res.json({
+            id: record.id,
+            title: record.title,
+            createdAt: record.createdAt,
+            expiresAt: record.expiresAt
+        });
+    } catch (err) {
+        console.error('暂存临时阅读内容失败:', err);
+        res.status(500).json({ error: '暂存失败' });
+    }
+});
+
+// 按 id 读取暂存文章
+app.get('/temp-read', async (req, res) => {
+    const id = String(req.query.id || '');
+    if (!TEMP_READ_ID_RE.test(id)) {
+        return res.status(400).json({ error: '无效的 id' });
+    }
+
+    const filePath = path.join(TEMP_READ_DIR, `${id}.json`);
+    try {
+        const record = JSON.parse(await fsp.readFile(filePath, 'utf8'));
+        if (!record.expiresAt || record.expiresAt <= Date.now()) {
+            await fsp.unlink(filePath).catch(() => {});
+            return res.status(404).json({ error: '临时阅读已过期' });
+        }
+        res.json({
+            id: record.id,
+            text: record.text,
+            title: record.title,
+            createdAt: record.createdAt,
+            expiresAt: record.expiresAt
+        });
+    } catch (err) {
+        if (err.code === 'ENOENT') {
+            return res.status(404).json({ error: '临时阅读不存在或已过期' });
+        }
+        console.error('读取临时阅读内容失败:', err);
+        res.status(500).json({ error: '读取失败' });
+    }
+});
+
+// 保存临时文章到默认文件目录，可自定义标题
+app.post('/temp-read/save', async (req, res) => {
+    if (PROGRESS_ONLY) {
+        return res.status(503).json({ error: '此服务器仅提供阅读进度服务，无法保存文件' });
+    }
+
+    const { id, title } = req.body || {};
+    let text = typeof req.body.text === 'string' ? req.body.text : '';
+
+    // 没有正文时按 id 取回（例如只传 id 的调用方式）
+    if ((!text || !text.trim()) && typeof id === 'string' && TEMP_READ_ID_RE.test(id)) {
+        try {
+            const record = JSON.parse(await fsp.readFile(path.join(TEMP_READ_DIR, `${id}.json`), 'utf8'));
+            if (record.expiresAt && record.expiresAt > Date.now()) {
+                text = record.text;
+            }
+        } catch (err) {
+            // 忽略：稍后按正文为空返回错误
+        }
+    }
+
+    if (typeof text !== 'string' || !text.trim()) {
+        return res.status(400).json({ error: '没有可保存的内容' });
+    }
+    if (Buffer.byteLength(text, 'utf8') > MAX_FILE_SIZE) {
+        return res.status(413).json({ error: '内容过大' });
+    }
+
+    const fileName = sanitizeSaveTitle(title, text);
+
+    try {
+        await fsp.mkdir(baseDirectory, { recursive: true });
+        const savedName = await fileMutex.runExclusive(async () => {
+            const uniqueName = uniqueTempSaveName(fileName);
+            await fsp.writeFile(path.join(baseDirectory, uniqueName), text, 'utf8');
+            return uniqueName;
+        });
+        res.json({ fileName: savedName });
+    } catch (err) {
+        console.error('保存临时阅读内容失败:', err);
+        res.status(500).json({ error: '保存失败' });
+    }
+});
+
+cleanupTempReads();
+setInterval(cleanupTempReads, 60 * 60 * 1000).unref();
 
 app.post('/log-middle-p-index', async (req, res) => { // 将路由处理函数标记为 async
     const { fileName, middlePIndex } = req.body;

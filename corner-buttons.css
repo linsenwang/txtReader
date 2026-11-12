@@ -1,0 +1,63 @@
+/* 角落悬浮按钮：全站统一的尺寸、外观与交互状态。
+   页面只负责用 ID 规则给 .corner-btn 定位，视觉和状态都在这里定义。 */
+:root {
+    --corner-btn-size: 40px;
+    --corner-btn-icon-size: 1.2em;
+    --corner-btn-inset: 20px;
+    --corner-btn-gap: 10px;
+    --corner-btn-opacity: 0.65;
+    --corner-btn-opacity-active: 1;
+    --corner-btn-opacity-disabled: 0.25;
+}
+
+.corner-btn {
+    width: var(--corner-btn-size);
+    height: var(--corner-btn-size);
+    padding: 0;
+    border: none;
+    border-radius: 50%;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: var(--corner-btn-opacity);
+    transition: opacity 0.25s ease, transform 0.15s ease;
+}
+
+.corner-btn img {
+    width: var(--corner-btn-icon-size);
+    height: var(--corner-btn-icon-size);
+    display: block;
+}
+
+/* 悬停、键盘聚焦，以及处于激活状态（模式开启 / 菜单展开）时完全显现 */
+.corner-btn:hover,
+.corner-btn:focus-visible,
+.corner-btn.active,
+.corner-btn[aria-expanded="true"],
+.corner-btn[aria-pressed="true"] {
+    opacity: var(--corner-btn-opacity-active);
+}
+
+.corner-btn:focus-visible {
+    outline: 2px solid rgba(0, 0, 0, 0.35);
+    outline-offset: 2px;
+}
+
+.corner-btn:active:not(:disabled) {
+    transform: scale(0.92);
+}
+
+.corner-btn:disabled {
+    opacity: var(--corner-btn-opacity-disabled);
+    cursor: not-allowed;
+    transform: none;
+}
+
+@media (prefers-color-scheme: dark) {
+    .corner-btn:focus-visible {
+        outline-color: rgba(255, 255, 255, 0.45);
+    }
+}

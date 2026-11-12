@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <title>txtReader</title>
     <link rel="stylesheet" href="lib/katex.min.css">
+    <link rel="stylesheet" href="corner-buttons.css">
     <link rel="icon" type="image/x-icon" href="web_icon/yanan.png" />
     <link rel="stylesheet" type="text/css" href="afdian_styles.css">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
@@ -103,49 +104,26 @@
             display: block; /* 确保时间单独占据一行并居中 */
         }
 
+        /* 三个角落按钮的定位，外观与交互统一由 corner-buttons.css 提供 */
         #toggleFoldersOnly {
             position: fixed;
-            top: 20px;
-            left: 20px;
+            top: var(--corner-btn-inset);
+            left: var(--corner-btn-inset);
             z-index: 999;
-            height: 40px;
-            width: 40px;
-            background-color: rgba(255, 255, 255, 0);
-            border-radius: 40px;
-            border: none;
-            cursor: pointer;
         }
 
         #toggleSortMode {
             position: fixed;
-            top: 20px;
-            left: 70px;
+            top: var(--corner-btn-inset);
+            left: calc(var(--corner-btn-inset) + var(--corner-btn-size) + var(--corner-btn-gap));
             z-index: 999;
-            height: 40px;
-            width: 40px;
-            background-color: rgba(255, 255, 255, 0);
-            border-radius: 40px;
-            border: none;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
         }
 
         #clipboardMode {
             position: fixed;
-            top: 20px;
-            right: 20px;
+            top: var(--corner-btn-inset);
+            right: var(--corner-btn-inset);
             z-index: 999;
-            height: 40px;
-            width: 40px;
-            background-color: rgba(255, 255, 255, 0);
-            border-radius: 40px;
-            border: none;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
         }
 
         .sort-menu {
@@ -271,9 +249,9 @@
     </style>
 </head>
 <body>
-    <button id="toggleFoldersOnly"><img src="web_icon/folder.svg" class='folder_icon'></button>
-    <button id="toggleSortMode" title="排序方式" aria-haspopup="menu" aria-expanded="false"><img src="web_icon/sort.svg" class="folder_icon"></button>
-    <button id="clipboardMode" title="临时阅读剪贴板内容"><img src="web_icon/clipboard.svg" class="folder_icon"></button>
+    <button id="toggleFoldersOnly" class="corner-btn" title="只显示文件夹" aria-pressed="false"><img src="web_icon/folder.svg"></button>
+    <button id="toggleSortMode" class="corner-btn" title="排序方式" aria-haspopup="menu" aria-expanded="false"><img src="web_icon/sort.svg"></button>
+    <button id="clipboardMode" class="corner-btn" title="临时阅读剪贴板内容"><img src="web_icon/clipboard.svg"></button>
     <div class="sort-menu" id="sortMenu" role="menu" hidden>
         <button type="button" role="menuitemradio" aria-checked="false" data-sort="name-asc">名称正序</button>
         <button type="button" role="menuitemradio" aria-checked="false" data-sort="name-desc">名称倒序</button>
@@ -297,6 +275,69 @@
 
         // 临时阅读：直接读取剪贴板内容，交给阅读页渲染（内容按 id 暂存、不记录进度）
         const CLIPBOARD_TEXT_KEY = '__clipboardText__';
+        // 主页加载时，剪贴板里超过这个长度的文本会自动进入临时阅读
+        const AUTO_CLIPBOARD_MIN_CHARS = 500;
+        // 记录最近一次自动/手动打开过的剪贴板内容，避免从阅读页返回主页时反复跳转
+        const AUTO_CLIPBOARD_SIGNATURE_KEY = '__clipboardAutoOpened__';
+
+        function getClipboardSignature(text) {
+            let hash = 2166136261;
+            for (let i = 0; i < text.length; i++) {
+                hash ^= text.charCodeAt(i);
+                hash = Math.imul(hash, 16777619);
+            }
+            return `${text.length}:${(hash >>> 0).toString(36)}`;
+        }
+
+        function rememberClipboardOpen(text) {
+            try {
+                localStorage.setItem(AUTO_CLIPBOARD_SIGNATURE_KEY, getClipboardSignature(text));
+            } catch (error) {
+                // localStorage 不可用时忽略，最多多跳转一次
+            }
+        }
+
+        async function autoOpenClipboardReader() {
+            if (!navigator.clipboard || typeof navigator.clipboard.readText !== 'function') return;
+
+            let text = '';
+            try {
+                text = await navigator.clipboard.readText();
+            } catch (error) {
+                // 浏览器可能要求用户授权，自动读取失败时静默放弃
+                console.log('自动读取剪贴板失败:', error);
+                return;
+            }
+
+            if (!text || text.trim().length < AUTO_CLIPBOARD_MIN_CHARS) {
+                // 剪贴板换成了普通内容，下次再复制长文本时可以重新自动打开
+                try {
+                    localStorage.removeItem(AUTO_CLIPBOARD_SIGNATURE_KEY);
+                } catch (error) {
+                    // 忽略
+                }
+                return;
+            }
+
+            const signature = getClipboardSignature(text);
+            try {
+                if (localStorage.getItem(AUTO_CLIPBOARD_SIGNATURE_KEY) === signature) {
+                    return;
+                }
+            } catch (error) {
+                // localStorage 不可用时继续尝试打开
+            }
+
+            try {
+                sessionStorage.setItem(CLIPBOARD_TEXT_KEY, text);
+            } catch (error) {
+                console.warn('剪贴板内容过大，跳过自动临时阅读:', error);
+                return;
+            }
+
+            rememberClipboardOpen(text);
+            window.location.href = 'file.html?clipboard=1';
+        }
 
         async function openClipboardReader() {
             let text = '';
@@ -312,6 +353,7 @@
             if (text && text.trim()) {
                 try {
                     sessionStorage.setItem(CLIPBOARD_TEXT_KEY, text);
+                    rememberClipboardOpen(text);
                     window.location.href = 'file.html?clipboard=1';
                     return;
                 } catch (error) {
@@ -359,6 +401,13 @@
         }
 
         document.addEventListener('DOMContentLoaded', async function() {
+            // 只在根主页检查剪贴板：长文本自动进入临时阅读。
+            // 进入子目录（?dir=...）时不要打断浏览。
+            const currentDirParam = new URLSearchParams(window.location.search).get('dir');
+            if (!currentDirParam) {
+                autoOpenClipboardReader();
+            }
+
             // 先获取服务器配置
             await loadServerConfig();
 
@@ -554,6 +603,8 @@
 
             function toggleFoldersOnly() {
                 foldersOnly = !foldersOnly;
+                button.classList.toggle('active', foldersOnly);
+                button.setAttribute('aria-pressed', foldersOnly ? 'true' : 'false');
                 applyFoldersOnly(document.getElementById('fileList'));
                 // 隐藏掉大半条目后视口可能又空出来了，继续补下一批
                 maybeLoadMore();
@@ -712,10 +763,43 @@
     <script>
         // 注册 Service Worker
         if ('serviceWorker' in navigator) {
+            const SW_CONTROLLED_KEY = '__swHasController__';
+            const hasControlledBefore = () => {
+                try {
+                    return localStorage.getItem(SW_CONTROLLED_KEY) === '1';
+                } catch (error) {
+                    return false;
+                }
+            };
+            const markControlled = () => {
+                try {
+                    localStorage.setItem(SW_CONTROLLED_KEY, '1');
+                } catch (error) {
+                    // localStorage 不可用时忽略
+                }
+            };
+
+            const hadController = !!navigator.serviceWorker.controller;
+            if (hadController) markControlled();
+
+            let refreshing = false;
+            // 新版本激活并接管页面后自动刷新一次，避免手动强制刷新。
+            // 首次安装时 controller 从无到有，不需要刷新，只记录状态。
+            navigator.serviceWorker.addEventListener('controllerchange', () => {
+                const controlledBefore = hadController || hasControlledBefore();
+                markControlled();
+
+                if (refreshing || !controlledBefore) return;
+                refreshing = true;
+                window.location.reload();
+            });
+
             window.addEventListener('load', () => {
-                navigator.serviceWorker.register('/service-worker.js')
+                navigator.serviceWorker.register('/service-worker.js', { updateViaCache: 'none' })
                     .then((registration) => {
                         console.log('Service Worker 注册成功:', registration.scope);
+                        // 每次打开主页都主动检查更新
+                        registration.update().catch(() => {});
                     })
                     .catch((error) => {
                         console.log('Service Worker 注册失败:', error);

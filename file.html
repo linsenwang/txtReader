@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <title>txtReader</title>
     <link rel="stylesheet" href="lib/katex.min.css">
+    <link rel="stylesheet" href="corner-buttons.css">
     <link rel="icon" type="image/x-icon" href="web_icon/yanan.png" />
     <link rel="stylesheet" type="text/css" href="afdian_styles.css">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
@@ -114,69 +115,28 @@
         /* 分页控制按钮 - 右下角 */
         .page-controls {
             position: fixed;
-            bottom: 20px;
-            right: 20px;
+            bottom: var(--corner-btn-inset);
+            right: var(--corner-btn-inset);
             display: flex;
             align-items: center;
-            gap: 10px;
+            gap: var(--corner-btn-gap);
             z-index: 1000;
-            opacity: 0;
-            transition: opacity 0.25s ease;
-        }
-        
-        .page-controls:hover {
-            opacity: 1;
-        }
-        
-        .page-btn {
-            height: 40px;
-            width: 40px;
-            background-color: rgba(255, 255, 255, 0);
-            border-radius: 40px;
-            border: none;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 0;
-        }
-        
-        .page-btn img {
-            height: 1.2em;
-            width: 1.2em;
-            opacity: 0.7;
-        }
-        
-        .page-btn:hover img {
-            opacity: 1;
-        }
-        
-        .page-btn:disabled {
-            opacity: 0.2;
-            cursor: not-allowed;
         }
         
         /* 上一篇 / 下一篇 - 右下角悬浮 */
         .doc-nav {
             position: fixed;
-            bottom: 20px;
-            right: 20px;
+            bottom: var(--corner-btn-inset);
+            right: var(--corner-btn-inset);
             display: flex;
             flex-direction: row;
-            gap: 6px;
+            gap: var(--corner-btn-gap);
             z-index: 1001;
-            opacity: 0;
-            transition: opacity 0.25s ease;
-        }
-        
-        .doc-nav:hover,
-        .doc-nav:focus-within {
-            opacity: 1;
         }
         
         /* 翻页模式下让开底部的分页控制条 */
         body.paginated-mode .doc-nav {
-            bottom: 80px;
+            bottom: calc(var(--corner-btn-inset) + var(--corner-btn-size) + 20px);
         }
         
         .page-info {
@@ -195,55 +155,20 @@
             }
         }
         
-        .mode-toggle {
+        /* 右上角：翻页 / 滚动模式切换 */
+        #modeToggle {
             position: fixed;
-            top: 20px;
-            right: 20px;
+            top: var(--corner-btn-inset);
+            right: var(--corner-btn-inset);
             z-index: 999;
-            height: 40px;
-            width: 40px;
-            background-color: rgba(255, 255, 255, 0);
-            border-radius: 40px;
-            border: none;
-            cursor: pointer;
-            opacity: 0;
-            transition: opacity 0.25s ease;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-        
-        .mode-toggle img {
-            height: 1.2em;
-            width: 1.2em;
-            opacity: 0.7;
-        }
-        
-        .mode-toggle:hover {
-            opacity: 1;
-        }
-        
-        /* body:hover .mode-toggle {
-            opacity: 1;
-        } */
-        
-        #forceUpdateButton {
-            position: fixed;
-            top: 20px;
-            left: 20px;
-            z-index: 999;
-            height: 40px;
-            width: 40px;
-            background-color: rgba(255, 255, 255, 0);
-            border-radius: 40px;
-            border: none;
-            cursor: pointer;
-            opacity: 0;
-            transition: opacity 0.25s ease;
         }
 
-        #forceUpdateButton:hover {
-            opacity: 1;
+        /* 左上角：刷新阅读位置 */
+        #forceUpdateButton {
+            position: fixed;
+            top: var(--corner-btn-inset);
+            left: var(--corner-btn-inset);
+            z-index: 999;
         }
 
         .custom-toast {
@@ -266,38 +191,17 @@
         #clipboardButton,
         #saveButton {
             position: fixed;
-            top: 20px;
+            top: var(--corner-btn-inset);
             z-index: 999;
-            height: 40px;
-            width: 40px;
-            background-color: rgba(255, 255, 255, 0);
-            border-radius: 40px;
-            border: none;
-            cursor: pointer;
             display: none;
-            align-items: center;
-            justify-content: center;
-            opacity: 0.65;
-            transition: opacity 0.25s ease;
         }
 
         #clipboardButton {
-            right: 70px;
+            right: calc(var(--corner-btn-inset) + var(--corner-btn-size) + var(--corner-btn-gap));
         }
 
         #saveButton {
-            right: 120px;
-        }
-
-        #clipboardButton:hover,
-        #saveButton:hover {
-            opacity: 1;
-        }
-
-        #clipboardButton img,
-        #saveButton img {
-            height: 1.2em;
-            width: 1.2em;
+            right: calc(var(--corner-btn-inset) + var(--corner-btn-size) + var(--corner-btn-gap) + var(--corner-btn-size) + var(--corner-btn-gap));
         }
 
         .clipboard-overlay {
@@ -448,10 +352,10 @@
     </style>
 </head>
 <body>
-    <button id="forceUpdateButton" title="刷新位置"><img src="web_icon/refresh.svg" style="height: 1.2em; width: 1.2em;"></button>
-    <button id="clipboardButton" title="从剪贴板重新读取"><img src="web_icon/clipboard.svg"></button>
-    <button id="saveButton" title="保存到文件目录"><img src="web_icon/save.svg"></button>
-    <button id="modeToggle" class="mode-toggle" title="切换翻页/滚动模式"><img src="web_icon/scroll_mode.svg" style="height: 1.2em; width: 1.2em;"></button>
+    <button id="forceUpdateButton" class="corner-btn" title="刷新位置"><img src="web_icon/refresh.svg"></button>
+    <button id="clipboardButton" class="corner-btn" title="从剪贴板重新读取"><img src="web_icon/clipboard.svg"></button>
+    <button id="saveButton" class="corner-btn" title="保存到文件目录"><img src="web_icon/save.svg"></button>
+    <button id="modeToggle" class="corner-btn" title="切换翻页/滚动模式"><img src="web_icon/scroll_mode.svg"></button>
     
     <!-- 返回链接 -->
     <div class="back-link">
@@ -469,15 +373,15 @@
     
     <!-- 分页控制 - 右下角 -->
     <div class="page-controls" id="pageControls" style="display: none;">
-        <button class="page-btn" id="prevPage" title="上一页 (←)"><img src="web_icon/arrow.svg"></button>
+        <button class="corner-btn" id="prevPage" title="上一页 (←)"><img src="web_icon/arrow.svg"></button>
         <span class="page-info" id="pageInfo">1 / 1</span>
-        <button class="page-btn" id="nextPage" title="下一页 (→)"><img src="web_icon/arrow.svg" style="transform: rotate(180deg);"></button>
+        <button class="corner-btn" id="nextPage" title="下一页 (→)"><img src="web_icon/arrow.svg" style="transform: rotate(180deg);"></button>
     </div>
     
     <!-- 上一篇 / 下一篇 - 右下角悬浮 -->
     <div class="doc-nav" id="docNav">
-        <button class="page-btn" id="prevFile" title="上一篇" disabled><img src="web_icon/arrow.svg" alt="上一篇"></button>
-        <button class="page-btn" id="nextFile" title="下一篇" disabled><img src="web_icon/arrow_forward.svg" alt="下一篇"></button>
+        <button class="corner-btn" id="prevFile" title="上一篇" disabled><img src="web_icon/arrow.svg" alt="上一篇"></button>
+        <button class="corner-btn" id="nextFile" title="下一篇" disabled><img src="web_icon/arrow_forward.svg" alt="下一篇"></button>
     </div>
 
     <!-- 临时阅读：剪贴板内容粘贴 / 读取面板 -->
@@ -813,6 +717,8 @@
             icon.src = isPaginated ? 'web_icon/paged_mode.svg' : 'web_icon/scroll_mode.svg';
         }
         modeToggle.title = isPaginated ? '切换为滚动模式' : '切换为翻页模式';
+        modeToggle.classList.toggle('active', isPaginated);
+        modeToggle.setAttribute('aria-pressed', isPaginated ? 'true' : 'false');
     }
 
     // ===== 临时阅读（剪贴板） =====
@@ -874,7 +780,7 @@
             if (data.title) tempArticleTitle = data.title;
             document.title = tempArticleTitle || '临时阅读';
             setTempArticleUrl(data.id);
-            showToast('临时链接已生成，可稍后重访');
+            // showToast('临时链接已生成，可稍后重访');
         } catch (error) {
             if (seq !== tempPersistSeq) return;
             TEMP_ARTICLE_ID = null;

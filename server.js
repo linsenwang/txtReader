@@ -23,6 +23,12 @@ app.use((req, res, next) => {
     next();
 });
 
+// Service Worker 脚本禁用缓存，确保浏览器能及时拿到新版本
+app.get('/service-worker.js', (req, res) => {
+    res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.sendFile(path.join(__dirname, 'service-worker.js'));
+});
+
 app.use(express.static(__dirname));
 
 // 动态导入 EPUB 模块（ESM 模块）
@@ -517,7 +523,8 @@ const HASHES_FILE = process.env.HASHES_FILE || 'hashes.json';
 
 // ===== 临时阅读暂存 =====
 // 剪贴板内容按 id 暂存到本地目录，可用 file.html?tmp=<id> 重访；
-// 超过有效期后自动清理。保存模式会把内容写入默认文件目录（baseDirectory）。
+// id 由正文哈希派生，同样的内容得到同样的链接。超过有效期后自动清理。
+// 保存模式会把内容写入默认文件目录（baseDirectory）。
 const TEMP_READ_DIR = process.env.TEMP_READ_DIR
     ? path.resolve(process.env.TEMP_READ_DIR)
     : path.join(__dirname, '.tmp-reads');
@@ -527,8 +534,12 @@ const TEMP_READ_TTL_MS = Math.max(
 ) * 60 * 60 * 1000;
 const TEMP_READ_ID_RE = /^[a-f0-9]{16}$/i;
 
-function createTempId() {
-    return crypto.randomBytes(8).toString('hex');
+// 用正文哈希派生 id：同一篇内容总是得到同一个临时链接，重访与收藏都稳定
+function createTempId(text) {
+    return crypto.createHash('sha256')
+        .update(String(text), 'utf8')
+        .digest('hex')
+        .slice(0, 16);
 }
 
 // 从内容首行提取一个默认标题
@@ -623,7 +634,7 @@ app.post('/temp-read', async (req, res) => {
         return res.status(413).json({ error: '内容过大' });
     }
 
-    const id = createTempId();
+    const id = createTempId(text);
     const now = Date.now();
     const record = {
         id,
@@ -635,10 +646,24 @@ app.post('/temp-read', async (req, res) => {
 
     try {
         await fsp.mkdir(TEMP_READ_DIR, { recursive: true });
-        await fsp.writeFile(
-            path.join(TEMP_READ_DIR, `${id}.json`),
-            JSON.stringify(record)
-        );
+        const filePath = path.join(TEMP_READ_DIR, `${id}.json`);
+
+        // 同一内容已有未过期的暂存记录时直接复用，链接保持不变
+        try {
+            const existing = JSON.parse(await fsp.readFile(filePath, 'utf8'));
+            if (existing.expiresAt && existing.expiresAt > now) {
+                return res.json({
+                    id: existing.id,
+                    title: existing.title,
+                    createdAt: existing.createdAt,
+                    expiresAt: existing.expiresAt
+                });
+            }
+        } catch (err) {
+            // 不存在或内容损坏，按新记录写入
+        }
+
+        await fsp.writeFile(filePath, JSON.stringify(record));
         res.json({
             id: record.id,
             title: record.title,

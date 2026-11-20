@@ -186,6 +186,93 @@
             }
         }
 
+        /* 临时阅读：右上角角落按钮显示条数，展开列表仍在文件列表上方 */
+        #tempReadsToggle {
+            position: fixed;
+            top: var(--corner-btn-inset);
+            right: calc(var(--corner-btn-inset) + var(--corner-btn-size) + var(--corner-btn-gap));
+            z-index: 999;
+            gap: 2px;
+            /* 与角落按钮图标的填充色一致 */
+            color: #ACBDD0;
+            font-family: inherit;
+            font-size: 12px;
+            font-weight: bold;
+            letter-spacing: 0;
+        }
+
+        #tempReadsToggle[hidden] {
+            display: none;
+        }
+
+        /* 覆盖全局 span { margin: auto }，避免计数和箭头被撑开 */
+        #tempReadsToggle span {
+            margin: 0;
+        }
+
+        #tempReadsToggle .temp-reads-arrow {
+            font-size: 9px;
+            transition: transform 0.2s ease;
+        }
+
+        #tempReadsToggle[aria-expanded="true"] .temp-reads-arrow {
+            transform: rotate(180deg);
+        }
+
+        .temp-reads {
+            margin: 20px 20px 0;
+        }
+
+        .temp-reads[hidden] {
+            display: none;
+        }
+
+        .temp-reads ul {
+            list-style: none;
+            margin: 0;
+            padding: 10px 14px 6px;
+            border-radius: 10px;
+            background: rgba(0, 0, 0, 0.03);
+        }
+
+        .temp-reads ul[hidden] {
+            display: none;
+        }
+
+        /* 展开时文件列表紧贴临时阅读条目，去掉顶部间距 */
+        .temp-reads.expanded + .file-list {
+            margin-top: 0;
+            padding-top: 0;
+        }
+
+        .temp-reads li {
+            padding: 7px 0;
+        }
+
+        .temp-reads a {
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+            color: #000;
+            font-size: 15px;
+            font-weight: bold;
+            line-height: 1.45;
+            text-decoration: none;
+            overflow-wrap: anywhere;
+        }
+
+        .temp-reads a:hover {
+            color: #0056b3;
+        }
+
+        .temp-reads .meta {
+            display: block;
+            margin-top: 2px;
+            font-size: 11px;
+            color: #999;
+        }
+
         /* 最近阅读悬浮条（透明全宽，悬浮在页面最底部） */
         #lastReadBar {
             position: fixed;
@@ -245,6 +332,22 @@
         #lastReadBar:hover {
             background: rgba(40, 40, 40, 0.85);
         }
+
+        .temp-reads ul {
+            background: rgba(255, 255, 255, 0.06);
+        }
+
+        .temp-reads a {
+            color: #fff;
+        }
+
+        .temp-reads a:hover {
+            color: #3388cc;
+        }
+
+        .temp-reads .meta {
+            color: #888;
+        }
     }
     </style>
 </head>
@@ -252,12 +355,18 @@
     <button id="toggleFoldersOnly" class="corner-btn" title="只显示文件夹" aria-pressed="false"><img src="web_icon/folder.svg"></button>
     <button id="toggleSortMode" class="corner-btn" title="排序方式" aria-haspopup="menu" aria-expanded="false"><img src="web_icon/sort.svg"></button>
     <button id="clipboardMode" class="corner-btn" title="临时阅读剪贴板内容"><img src="web_icon/clipboard.svg"></button>
+    <button id="tempReadsToggle" class="corner-btn" title="临时阅读" aria-expanded="false" aria-controls="tempReadsList" hidden><span class="temp-reads-count" id="tempReadsCount"></span><span class="temp-reads-arrow" aria-hidden="true">▾</span></button>
     <div class="sort-menu" id="sortMenu" role="menu" hidden>
         <button type="button" role="menuitemradio" aria-checked="false" data-sort="name-asc">名称正序</button>
         <button type="button" role="menuitemradio" aria-checked="false" data-sort="name-desc">名称倒序</button>
         <button type="button" role="menuitemradio" aria-checked="false" data-sort="time-asc">时间正序</button>
         <button type="button" role="menuitemradio" aria-checked="false" data-sort="time-desc">时间倒序</button>
     </div>
+    <!-- 临时阅读列表：默认折叠，展开后显示在文件列表上方 -->
+    <div class="temp-reads" id="tempReads" hidden>
+        <ul id="tempReadsList" hidden></ul>
+    </div>
+
     <!-- 文件列表 -->
     <div class="file-list" id="fileList">
         <!-- 文件列表分批渲染，滑到底部由 sentinel 触发下一批 -->
@@ -559,6 +668,60 @@
                 maybeLoadMore();
             }
 
+            // 临时阅读：角落按钮显示条数，点击后展开文件列表上方的条目
+            function bindTempReadsToggle() {
+                const section = document.getElementById('tempReads');
+                const toggle = document.getElementById('tempReadsToggle');
+                const listEl = document.getElementById('tempReadsList');
+                if (!section || !toggle || !listEl) return;
+
+                toggle.addEventListener('click', () => {
+                    const expanded = toggle.getAttribute('aria-expanded') !== 'true';
+                    toggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+                    section.classList.toggle('expanded', expanded);
+                    listEl.hidden = !expanded;
+                });
+            }
+
+            // 临时阅读列表：只显示在首页，条目链接到 file.html?tmp=<id>
+            async function loadTempReads() {
+                if (currentDir) return;
+                const section = document.getElementById('tempReads');
+                const toggle = document.getElementById('tempReadsToggle');
+                const listEl = document.getElementById('tempReadsList');
+                const countEl = document.getElementById('tempReadsCount');
+                if (!section || !toggle || !listEl || !countEl) return;
+
+                try {
+                    const response = await fetch('/temp-read/list');
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}`);
+                    }
+                    const data = await response.json();
+                    const items = Array.isArray(data.items) ? data.items : [];
+                    if (items.length === 0) {
+                        section.hidden = true;
+                        toggle.hidden = true;
+                        return;
+                    }
+
+                    countEl.textContent = `${items.length}`;
+                    toggle.title = `临时阅读：${items.length} 篇`;
+                    listEl.innerHTML = items.map(item => {
+                        const created = item.createdAt
+                            ? new Date(item.createdAt).toLocaleString().replace(/,/g, ' ')
+                            : '';
+                        return `<li><a href="file.html?tmp=${encodeURIComponent(item.id)}">${escapeHtml(item.title || '临时阅读')}</a>${created ? `<span class="meta">${escapeHtml(created)}</span>` : ''}</li>`;
+                    }).join('');
+                    section.hidden = false;
+                    toggle.hidden = false;
+                } catch (error) {
+                    console.warn('获取临时阅读列表失败:', error);
+                    section.hidden = true;
+                    toggle.hidden = true;
+                }
+            }
+
             // 滑到底部附近时渲染下一批
             const loadMoreSentinel = document.getElementById('loadMoreSentinel');
             if (loadMoreSentinel) {
@@ -572,6 +735,8 @@
             }, { passive: true });
 
             await loadVisitedFiles();
+            bindTempReadsToggle();
+            loadTempReads();
 
             fetch(`/list-files?dir=${encodeURIComponent(dir)}`)
                 .then(async response => {

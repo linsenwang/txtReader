@@ -542,14 +542,61 @@ function createTempId(text) {
         .slice(0, 16);
 }
 
-// 从内容首行提取一个默认标题
+// 去掉标题里常见的 Markdown 标记，便于在列表中展示
+function stripMarkdownForTitle(text) {
+    return String(text || '')
+        .replace(/!\[[^\]]*\]\([^)]*\)/g, '')
+        .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+        .replace(/`{1,3}([^`]*)`{1,3}/g, '$1')
+        .replace(/(\*\*|__)(.*?)\1/g, '$2')
+        .replace(/(\*|_)(.*?)\1/g, '$2')
+        .replace(/~~(.*?)~~/g, '$1')
+        .replace(/^\s{0,3}(#{1,6}|>|[-*+]|\d+[.)])\s+/gm, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+// 标题从第一段摘几句：优先取完整句子，过长时截断
 function deriveTempTitle(text) {
-    const firstLine = String(text || '')
-        .split(/\r?\n/)
-        .map(line => line.trim())
-        .find(line => line.length > 0);
-    if (!firstLine) return '临时阅读';
-    return firstLine.replace(/^#{1,6}\s*/, '').slice(0, 80).trim() || '临时阅读';
+    const firstParagraph = String(text || '')
+        .replace(/\r\n?/g, '\n')
+        .split(/\n\s*\n+/)
+        .map(paragraph => paragraph.trim())
+        .find(paragraph => paragraph && !/^[-*_\s]{3,}$/.test(paragraph));
+
+    const plain = stripMarkdownForTitle(firstParagraph);
+    if (!plain) return '临时阅读';
+
+    const MAX_CHARS = 120;
+    const MAX_SENTENCES = 2;
+    const SENTENCE_END = '。！？!?；;…';
+    const chars = Array.from(plain);
+    const excerpt = [];
+    let sentences = 0;
+
+    for (let i = 0; i < chars.length; i++) {
+        excerpt.push(chars[i]);
+        if (SENTENCE_END.includes(chars[i])) {
+            // 连续标点（如“？！”、“……”）算同一句
+            while (i + 1 < chars.length && SENTENCE_END.includes(chars[i + 1])) {
+                excerpt.push(chars[++i]);
+            }
+            sentences += 1;
+            if (sentences >= MAX_SENTENCES) break;
+        }
+        if (excerpt.length >= MAX_CHARS) break;
+    }
+
+    let title = excerpt.join('').trim();
+    if (excerpt.length < chars.length) {
+        if (Array.from(title).length >= MAX_CHARS) {
+            title = Array.from(title).slice(0, MAX_CHARS - 1).join('') + '…';
+        } else if (!/[。！？!?；;…]$/.test(title)) {
+            title += '…';
+        }
+    }
+
+    return title || '临时阅读';
 }
 
 // 清理过期或被破坏的暂存文件
@@ -654,7 +701,7 @@ app.post('/temp-read', async (req, res) => {
             if (existing.expiresAt && existing.expiresAt > now) {
                 return res.json({
                     id: existing.id,
-                    title: existing.title,
+                    title: deriveTempTitle(existing.text),
                     createdAt: existing.createdAt,
                     expiresAt: existing.expiresAt
                 });
@@ -693,7 +740,7 @@ app.get('/temp-read', async (req, res) => {
         res.json({
             id: record.id,
             text: record.text,
-            title: record.title,
+            title: deriveTempTitle(record.text),
             createdAt: record.createdAt,
             expiresAt: record.expiresAt
         });
@@ -704,6 +751,55 @@ app.get('/temp-read', async (req, res) => {
         console.error('读取临时阅读内容失败:', err);
         res.status(500).json({ error: '读取失败' });
     }
+});
+
+// 列出未过期的暂存文章（首页「临时阅读」列表使用）
+app.get('/temp-read/list', async (req, res) => {
+    await cleanupTempReads();
+
+    let files;
+    try {
+        files = await fsp.readdir(TEMP_READ_DIR);
+    } catch (err) {
+        if (err.code === 'ENOENT') {
+            return res.json({ items: [] });
+        }
+        console.error('读取临时阅读目录失败:', err);
+        return res.status(500).json({ error: '读取失败' });
+    }
+
+    const now = Date.now();
+    const items = (await Promise.all(
+        files
+            .filter(file => file.endsWith('.json'))
+            .map(async file => {
+                const filePath = path.join(TEMP_READ_DIR, file);
+                try {
+                    const record = JSON.parse(await fsp.readFile(filePath, 'utf8'));
+                    if (!record.expiresAt || record.expiresAt <= now) {
+                        await fsp.unlink(filePath).catch(() => {});
+                        return null;
+                    }
+                    const id = TEMP_READ_ID_RE.test(record.id || '')
+                        ? record.id
+                        : path.basename(file, '.json');
+                    if (!TEMP_READ_ID_RE.test(id)) return null;
+
+                    return {
+                        id,
+                        title: deriveTempTitle(record.text),
+                        createdAt: record.createdAt || 0,
+                        expiresAt: record.expiresAt
+                    };
+                } catch (err) {
+                    return null;
+                }
+            })
+    ))
+        .filter(Boolean)
+        .sort((a, b) => b.createdAt - a.createdAt);
+
+    res.json({ items });
 });
 
 // 保存临时文章到默认文件目录，可自定义标题
